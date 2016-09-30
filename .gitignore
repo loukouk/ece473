@@ -2,3 +2,6 @@
 *.elf
 *.map
 *.o
+*.srec
+*.bin
+*.lst
