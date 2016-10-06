@@ -1,4 +1,4 @@
-PRG            =lab1_code
+PRG            =lab_code
 
 OBJ            = $(PRG).o
 
@@ -7,7 +7,7 @@ OPTIMIZE       = -O3  # options are 1, 2, 3, s
 CC             = avr-gcc
 F_CPU          = 16000000UL
 
-override CFLAGS        = -g -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) $(DEFS)
+override CFLAGS        = -std=gnu99 -g -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) $(DEFS)
 override LDFLAGS       = -Wl,-Map,$(PRG).map
 
 OBJCOPY        = avr-objcopy
