@@ -15,8 +15,8 @@ uint8_t SEGS[5] = {0,0,0xFF,0,0};
 // Port D bit zero.  Debounce time is determined by external loop delay times 12. 
 //*******************************************************************************
 int8_t debounce_switch(uint8_t pin) {
-	static uint16_t state[8] = {0,0,0,0,0,0,0,0}; //holds present state
-	state[pin] = (state[pin] << 1) | (! bit_is_clear(PINA, pin)) | 0xE000;
+	static uint16_t state[8] = {0,0,0,0,0,0,0,0}; //holds present states
+	state[pin] = (state[pin] << 1) | (! bit_is_clear(PINA, pin)) | 0xE000;	//count 12 "presses"
 	if (state[pin] == 0xF000) return 1;
 	return 0;
 }
@@ -41,9 +41,10 @@ uint8_t decode_digit(int8_t digit)
 
 void split_count ()
 {
-	uint16_t count = COUNT;
-	uint8_t segs[5];
+	uint16_t count = COUNT;		// local COUNT variable
+	uint8_t segs[5];		// local SEGS variable
 
+	//breaks up COUNT value into its separate digits
 	segs[4] = count/1000;
 	count -= segs[4] * 1000;
 	segs[3] = count/100;
@@ -52,6 +53,7 @@ void split_count ()
 	count -= segs[1] * 10;
 	segs[0] = count;
 
+	//removes all leading zeroes for a cleaner output
 	if (segs[4] == 0) {
 		segs[4] = -1;
 		if (segs[3] == 0) {
@@ -62,6 +64,7 @@ void split_count ()
 		}
 	}
 
+	//decodes each digit into a value for the 7seg display
 	SEGS[4] = decode_digit(segs[4]);
 	SEGS[3] = decode_digit(segs[3]);
 	SEGS[1] = decode_digit(segs[1]);
@@ -72,32 +75,32 @@ int main()
 {
 	uint8_t i;
 
-	DDRB = 0xFF;  //set port B to all outputs
-	PORTB= ~(1<<PB7);
-
+	DDRB = 0xFF;  				//set port B to all outputs
+	PORTB= (1<<PB6) | (1<<PB5) | (1<<PB4);	//set select bits off
 
 	while(1){     //do forever
 
-		split_count();
-		DDRA = 0xFF;	//set PORTA to all outputs
-		for (i = 0; i < 5; i++) {
+		split_count();			//populate SEGS array for 7seg output
+		DDRA = 0xFF;			//set PORTA to all outputs
+		for (i = 0; i < 5; i++) {	//Loop through each 7seg digit
 			PORTA = SEGS[i];
 			PORTB &= (i << PB4) & 0x70;
 			_delay_ms(1);
 			PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
 		}
 
-		DDRA = 0x00;	//set PORTA to all inputs
-		PORTA= 0xFF;	//set all pull up resistors on PORTA
-		PORTB &= (5 << 4) & 0x70;
+		DDRA = 0x00;			//set PORTA to all inputs
+		PORTA= 0xFF;			//set all pull up resistors on PORTA
+		PORTB &= (5 << 4) & 0x70;	//set select bits to take input from pushbuttons
 		_delay_ms(1);
 
-		for (i = 0; i < 8; i++) {
+		for (i = 0; i < 8; i++) {	//take input with debouncing
 			if (debounce_switch(i))
 				COUNT += 1 << i;
 		}
-		PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
-		if (COUNT > 1023)
+
+		PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);	//turn off select bits
+		if (COUNT > 1023)				//check for overflow
 			COUNT -= 1023;
 
 	} //while 
