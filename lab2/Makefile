@@ -1,4 +1,4 @@
-PRG            =controller
+PRG            =lab_code
 
 OBJ            = $(PRG).o
 

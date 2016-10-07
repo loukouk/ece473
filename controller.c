@@ -4,7 +4,7 @@
 #include <util/delay.h>
 
 uint16_t COUNT = 0;
-uint8_t SEGS[5];
+uint8_t SEGS[5] = {0,0,0xFF,0,0};
 
 //*******************************************************************************
 //                            debounce_switch                                  
@@ -24,18 +24,18 @@ int8_t debounce_switch(uint8_t pin) {
 uint8_t decode_digit(int8_t digit)
 {
 	switch(digit){
-		case -1:	return 0b11111111;
-		case 0: 	return 0b11000000;
-		case 1: 	return 0b11111001;
-		case 2: 	return 0b10100100;
-		case 3: 	return 0b10110000;
-		case 4: 	return 0b10011001;
-		case 5: 	return 0b10010010;
-		case 6: 	return 0b10000010;
-		case 7: 	return 0b11111000;
-		case 8: 	return 0b10000000;
-		case 9:		return 0b10011000;
-		default:	return 0b10111111;
+		case -1:	return 0b11111111;	// turn off digit
+		case 0: 	return 0b11000000;	// print 0
+		case 1: 	return 0b11111001;	// print 1
+		case 2: 	return 0b10100100;	// print 2
+		case 3: 	return 0b10110000;	// print 3
+		case 4: 	return 0b10011001;	// print 4
+		case 5: 	return 0b10010010;	// print 5
+		case 6: 	return 0b10000010;	// print 6
+		case 7: 	return 0b11111000;	// print 7
+		case 8: 	return 0b10000000;	// print 8
+		case 9:		return 0b10011000;	// print 9
+		default:	return 0b10111111;	// print dash when there is an unexpected value
 	}
 }
 
@@ -52,15 +52,20 @@ void split_count ()
 	count -= segs[1] * 10;
 	segs[0] = count;
 
-	SEGS[0] = decode_digit(segs[0]);
-	SEGS[1] = decode_digit(segs[1]);
-	SEGS[3] = decode_digit(segs[3]);
-	SEGS[4] = decode_digit(segs[4]);
+	if (segs[4] == 0) {
+		segs[4] = -1;
+		if (segs[3] == 0) {
+			segs[3] = -1;
+			if (segs[1] == 0) {
+				segs[1] = -1;
+			}
+		}
+	}
 
-	if (segs[0] % 2)
-		SEGS[2] = 0xFC;
-	else
-		SEGS[2] = 0xFF;
+	SEGS[4] = decode_digit(segs[4]);
+	SEGS[3] = decode_digit(segs[3]);
+	SEGS[1] = decode_digit(segs[1]);
+	SEGS[0] = decode_digit(segs[0]);
 }
 
 int main()
@@ -68,7 +73,7 @@ int main()
 	uint8_t i;
 
 	DDRB = 0xFF;  //set port B to all outputs
-	PORTB= 0x00;
+	PORTB= ~(1<<PB7);
 
 
 	while(1){     //do forever
@@ -76,15 +81,15 @@ int main()
 		split_count();
 		DDRA = 0xFF;	//set PORTA to all outputs
 		for (i = 0; i < 5; i++) {
-			PORTB &= ~(i << 4);
 			PORTA = SEGS[i];
-			_delay_ms(2);
+			PORTB &= (i << PB4) & 0x70;
+			_delay_ms(1);
 			PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
 		}
 
 		DDRA = 0x00;	//set PORTA to all inputs
 		PORTA= 0xFF;	//set all pull up resistors on PORTA
-		PORTB &= ~(5 << 4);
+		PORTB &= (5 << 4) & 0x70;
 		_delay_ms(1);
 
 		for (i = 0; i < 8; i++) {
@@ -92,6 +97,8 @@ int main()
 				COUNT += 1 << i;
 		}
 		PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
+		if (COUNT > 1023)
+			COUNT -= 1023;
 
 	} //while 
 } //main
