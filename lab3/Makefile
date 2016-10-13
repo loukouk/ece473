@@ -1,9 +1,9 @@
-PRG            =controller
+PRG            =lab_code
 
 OBJ            = $(PRG).o
 
 MCU_TARGET     = atmega128
-OPTIMIZE       = -O3  # options are 1, 2, 3, s
+OPTIMIZE       = -O2  # options are 1, 2, 3, s
 CC             = avr-gcc
 F_CPU          = 16000000UL
 

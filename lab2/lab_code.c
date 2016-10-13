@@ -3,6 +3,8 @@
 #include <avr/io.h>
 #include <util/delay.h>
 
+#include "_functions.c"
+
 uint16_t COUNT = 0;
 uint8_t SEGS[5] = {0,0,0xFF,0,0};
 
@@ -16,7 +18,7 @@ uint8_t SEGS[5] = {0,0,0xFF,0,0};
 //*******************************************************************************
 int8_t debounce_switch(uint8_t pin) {
 	static uint16_t state[8] = {0,0,0,0,0,0,0,0}; //holds present states
-	state[pin] = (state[pin] << 1) | (! bit_is_clear(PINA, pin)) | 0xE000;	//count 12 "presses"
+	state[pin] = (state[pin] << 1) | (! bit_is_clear(PINA, 7-pin)) | 0xE000;	//count 12 "presses"
 	if (state[pin] == 0xF000) return 1;
 	return 0;
 }
@@ -92,7 +94,7 @@ int main()
 		DDRA = 0x00;			//set PORTA to all inputs
 		PORTA= 0xFF;			//set all pull up resistors on PORTA
 		PORTB &= (5 << 4) & 0x70;	//set select bits to take input from pushbuttons
-		_delay_ms(1);
+		asm("nop");
 
 		for (i = 0; i < 8; i++) {	//take input with debouncing
 			if (debounce_switch(i))
