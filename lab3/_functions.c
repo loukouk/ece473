@@ -1,6 +1,21 @@
 #define CW 1
 #define CCW 2
 
+//*******************************************************************************
+//                            debounce_switch                                  
+// Adapted from Ganssel's "Guide to Debouncing"            
+// Checks the state of pushbutton S0 It shifts in ones till the button is pushed. 
+// Function returns a 1 only once per debounced button push so a debounce and toggle 
+// function can be implemented at the same time.  Expects active low pushbutton on 
+// Port D bit zero.  Debounce time is determined by external loop delay times 12. 
+//*******************************************************************************
+int8_t debounce_switch(uint8_t pin) {
+	static uint16_t state[8] = {0,0,0,0,0,0,0,0}; //holds present states
+	state[pin] = (state[pin] << 1) | (! bit_is_clear(PINA, 7-pin)) | 0xE000;	//count 12 "presses"
+	if (state[pin] == 0xF000) return 1;
+	return 0;
+}
+
 uint8_t decode_digit(int8_t digit)
 {
 	switch(digit){

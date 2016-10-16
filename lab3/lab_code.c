@@ -1,27 +1,12 @@
-#define F_CPU 16000000UL
-
 #include <avr/io.h>
+#include <avr/interrupt.h>
 #include <util/delay.h>
 
 #include "_functions.c"
 
-uint16_t COUNT = 0;
+int16_t COUNT = 0;
 uint8_t SEGS[5] = {0,0,0xFF,0,0};
 
-//*******************************************************************************
-//                            debounce_switch                                  
-// Adapted from Ganssel's "Guide to Debouncing"            
-// Checks the state of pushbutton S0 It shifts in ones till the button is pushed. 
-// Function returns a 1 only once per debounced button push so a debounce and toggle 
-// function can be implemented at the same time.  Expects active low pushbutton on 
-// Port D bit zero.  Debounce time is determined by external loop delay times 12. 
-//*******************************************************************************
-int8_t debounce_switch(uint8_t pin) {
-	static uint16_t state[8] = {0,0,0,0,0,0,0,0}; //holds present states
-	state[pin] = (state[pin] << 1) | (! bit_is_clear(PINA, 7-pin)) | 0xE000;	//count 12 "presses"
-	if (state[pin] == 0xF000) return 1;
-	return 0;
-}
 
 void split_count ()
 {
@@ -55,49 +40,44 @@ void split_count ()
 	SEGS[0] = decode_digit(segs[0]);
 }
 
-int main()
+ISR(TIMER0_OVF_vect)
 {
 	uint8_t i;
 	uint8_t mode = 0x00;
-	uint8_t data, dir, tempmode;	
+	uint8_t data, dir[2], tempmode;	
+	uint8_t ports_data[2];
 
-	DDRB = 0xF7;  	//set port B to all outputs (except PB3 - MISO)
-	PORTB= 0x78;	//set select bits off, PWM low, pull up resistor on MISO
+	ports_data[0] = PORTA;		//save PORTA data
+	ports_data[1] = PORTB;		//save PORTA data
+	PORTA= 0xFF;			//set all pull up resistors on PORTA
+	DDRA = 0x00;			//set PORTA to all inputs
+	PORTB |= 0x70;
+	PORTB &= (5 << 4) & 0x70;	//set select bits to take input from pushbuttons
+	asm("nop");
 
-	DDRD = 0xFF;
-	DDRE = 0xFF;
-
-	SPI_init();
-
-	while(1){     //do forever
-
-		split_count();			//populate SEGS array for 7seg output
-		DDRA = 0xFF;			//set PORTA to all outputs
-		for (i = 0; i < 5; i++) {	//Loop through each 7seg digit
-			PORTA = SEGS[i];
-			PORTB &= (i << PB4) & 0x70;
-			_delay_ms(1);
-			PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
+	for (i = 0; i < 8; i++) {	//take input with debouncing
+		if (debounce_switch(i)) {
+			mode |= 1 << i;
 		}
-
-		DDRA = 0x00;			//set PORTA to all inputs
-		PORTA= 0xFF;			//set all pull up resistors on PORTA
-		PORTB &= (5 << 4) & 0x70;	//set select bits to take input from pushbuttons
-		asm("nop");
-
-		for (i = 0; i < 8; i++) {	//take input with debouncing
-			if (debounce_switch(i))
-				mode ^= 1 << i;
+		else {
+			mode &= ~(1 << i);
 		}
+	}
 
-		PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);	//turn off select bits
+	asm("nop");
+	PORTB = ports_data[1];		//restore PORTB data
+	DDRA  = 0xFF;			//set PORTA back to outputs
+	PORTA = ports_data[0];		//restore PORTA data
 
-		data = spi_send_read(mode);
-		dir = find_direction(data, 0);
+	tempmode = mode & 0x03;		//only use first 2 pushbuttons for now
+	data = spi_send_read(tempmode);	//display their mode on bar graph + get input from encoders
 
-		tempmode = mode & 0x03;
+	//for each encoder, determine which direction it is being turned
+	for (i = 0; i < 2; i++) {
+		dir[i] = find_direction(data >> (i*2), i);
 
-		if (dir == CW) {
+		//increment count if encoders are being turned clockwise
+		if (dir[i] == CW) {
 			if (tempmode == 0x00)
 				COUNT++;
 			else if (tempmode == 0x01)
@@ -105,7 +85,8 @@ int main()
 			else if (tempmode == 0x02)
 				COUNT += 4;
 		}
-		if (dir == CCW) {
+		//decrement count if encoders are being turned counter clockwise
+		if (dir[i] == CCW) {
 			if (tempmode == 0x00)
 				COUNT--;
 			else if (tempmode == 0x01)
@@ -113,10 +94,43 @@ int main()
 			else if (tempmode == 0x02)
 				COUNT -= 4;
 		}
-		if (COUNT > 1023)				//check for overflow
-			COUNT -= 1023;
-		else if (COUNT < 0)				//check for underflow
-			COUNT += 1023;
+	}
+	if (COUNT > 1023)		//check for overflow
+		COUNT -= 1023;
+	else if (COUNT < 0)		//check for underflow
+		COUNT += 1024;
+}
+
+int main()
+{
+	uint8_t i;
+
+	DDRA = 0xFF;	//set PORTA to all outputs
+	PORTA= 0xff;	//set all LEDs off at init
+
+	DDRB = 0xF7;  	//set port B to all outputs (except PB3 - MISO)
+	PORTB= 0x78;	//set select bits off, PWM low, pull up resistor on MISO
+
+	DDRD = 0xFF;	//set PORTD to all outputs
+	DDRE = 0xFF;	//set PORTE to all outputs
+
+	SPI_init();
+
+	TIMSK |= (1<<TOIE0);				//enable interrupts
+	TCCR0 |= (1<<CS02) | (1<<CS01) | (1<<CS00);	//normal mode, prescale by 1024
+
+	sei();
+
+	while(1){     //do forever
+
+		split_count();			//populate SEGS array for 7seg output
+		for (i = 0; i < 5; i++) {	//Loop through each 7seg digit
+			PORTA = SEGS[i];
+			PORTB &= (i << PB4) & 0x70;
+			_delay_ms(1);
+			PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
+		}
+
 
 	} //while 
 } //main
