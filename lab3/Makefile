@@ -7,7 +7,7 @@ OPTIMIZE       = -O2  # options are 1, 2, 3, s
 CC             = avr-gcc
 F_CPU          = 16000000UL
 
-override CFLAGS        = -std=gnu99 -g -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) $(DEFS)
+override CFLAGS        = -std=gnu99 -g -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) -DEF_CPU=$(F_CPU) $(DEFS)
 override LDFLAGS       = -Wl,-Map,$(PRG).map
 
 OBJCOPY        = avr-objcopy

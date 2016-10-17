@@ -48,7 +48,7 @@ ISR(TIMER0_OVF_vect)
 	uint8_t ports_data[2];
 
 	ports_data[0] = PORTA;		//save PORTA data
-	ports_data[1] = PORTB;		//save PORTA data
+	ports_data[1] = PORTB & 0x70;	//save PORTA data
 	PORTA= 0xFF;			//set all pull up resistors on PORTA
 	DDRA = 0x00;			//set PORTA to all inputs
 	PORTB |= 0x70;
@@ -65,7 +65,7 @@ ISR(TIMER0_OVF_vect)
 	}
 
 	asm("nop");
-	PORTB = ports_data[1];		//restore PORTB data
+	PORTB|= ports_data[1];		//restore PORTB data
 	DDRA  = 0xFF;			//set PORTA back to outputs
 	PORTA = ports_data[0];		//restore PORTA data
 
