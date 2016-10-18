@@ -3,61 +3,74 @@
 #include <util/delay.h>
 
 #include "_functions.c"
+//#include "hd44780.h"
 
-volatile int16_t COUNT = 0;
+volatile uint8_t time[3] = {0,0,0};
 volatile uint8_t SEGS[5] = {0,0,0xFF,0,0};
 volatile uint8_t mode = 0x00;
 volatile uint8_t encoder_mode;
 
-void split_count ()
+void split_count()
 {
-	uint16_t count = COUNT;		// local COUNT variable
-	uint8_t segs[5];		// local SEGS variable
+	uint8_t divider;
 
-	//breaks up COUNT value into its separate digits
-	if (encoder_mode == 0) {
-		segs[4] = count/1000;
-		count -= segs[4] * 1000;
-		segs[3] = count/100;
-		count -= segs[3] * 100;
-		segs[1] = count/10;
-		count -= segs[1] * 10;
-		segs[0] = count;
-
-		segs[2] |= (1<<PA2);
+	if (encoder_mode) {
+		divider = 16;
+		SEGS[2] &= ~(1<<PA2);
 	}
 	else {
-		segs[4] = count/(4096);
-		count -= segs[4] * (4096);
-		segs[3] = count/(256);
-		count -= segs[3] * 256;
-		segs[1] = count/16;
-		count -= segs[1] * 16;
-		segs[0] = count;
-
-		segs[2] &= ~(1<<PA2);
+		divider = 10;
+		SEGS[2] |= 1<<PA2;
 	}
+
+	//breaks up time value into its separate digits
+	SEGS[4] = time[2] / divider;
+	SEGS[3] = time[2] % divider;
+
+	SEGS[1] = time[1] / divider;
+	SEGS[0] = time[1] % divider;
+
+	SEGS[2] |= (1<<PA2);
 
 	//removes all leading zeroes for a cleaner output
-	if (segs[4] == 0) {
-		segs[4] = -1;
-		if (segs[3] == 0) {
-			segs[3] = -1;
-			if (segs[1] == 0) {
-				segs[1] = -1;
-			}
-		}
-	}
+	if (SEGS[4] == 0)
+		SEGS[4] = -1;
+//	if (SEGS[1] == 0)
+//		SEGS[1] = -1;
 
 	//decodes each digit into a value for the 7seg display
-	SEGS[4] = decode_digit(segs[4]);
-	SEGS[3] = decode_digit(segs[3]);
-	SEGS[1] = decode_digit(segs[1]);
-	SEGS[0] = decode_digit(segs[0]);
+	SEGS[4] = decode_digit(SEGS[4]);
+	SEGS[3] = decode_digit(SEGS[3]);
+	SEGS[1] = decode_digit(SEGS[1]);
+	SEGS[0] = decode_digit(SEGS[0]);
+
+	if (time[0] % 2)
+		SEGS[2] &= ~(0x03);
+	else
+		SEGS[2] |= 0x03;
+}
+
+void check_time_overflow()
+{
+	if (time[1] >= 60) {
+		time[1] -= 60;
+		time[2]++;
+		if (time[2] >= 24)
+			time[2] -= 24;
+	}
 }
 
 ISR(TIMER0_OVF_vect)
 {
+	time[0]++;
+	if (time[0] >= 60) {
+		time[0] -= 60;
+		time[1]++;
+		check_time_overflow();
+	}
+}
+
+ISR(TIMER2_OVF_vect) {
 	uint8_t i;
 	uint8_t dir[2], tempmode;	
 	uint8_t ports_data[2];
@@ -115,19 +128,16 @@ ISR(TIMER0_OVF_vect)
 	}
 	while (encoder_count >= 4) {
 		encoder_count -= 4;
-		COUNT++;
+		time[i+1]++;
 	}
 	while (encoder_count <= -4) {
 		encoder_count += 4;
-		COUNT--;
+		time[i+1]--;
 	}
-
-
-	if (COUNT > 1023)		//check for overflow
-		COUNT -= 1023;
-	else if (COUNT < 0)		//check for underflow
-		COUNT += 1024;
+	check_time_overflow();
 }
+
+
 
 int main()
 {
@@ -148,8 +158,14 @@ int main()
 
 	SPI_init();
 
-	TIMSK |= (1<<TOIE0);		//enable interrupts
-	TCCR0 |= (1<<CS02) | (1<<CS00);	//normal mode, prescale by 128
+	//TIMER 0 SETUP
+	ASSR  |= (1<<AS0);			//external clock 32,768Hz
+	TIMSK |= (1<<TOIE0);			//enable overflow interrupt
+	TCCR0 |= (1<<CS02) | (1<<CS00);		//normal mode, prescale by 128
+
+	//TIMER 2 SETUP
+	TIMSK |= (1<<TOIE2);			//enable overflow interrupt
+	TCCR2 |= (1<<CS21) | (1<<CS20);		//normal mode, prescale by 256
 
 	sei();
 
@@ -162,7 +178,5 @@ int main()
 			_delay_ms(1);
 			PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
 		}
-
-
 	} //while 
 } //main
