@@ -4,9 +4,9 @@
 
 #include "_functions.c"
 
-int16_t COUNT = 0;
-uint8_t SEGS[5] = {0,0,0xFF,0,0};
-
+volatile int16_t COUNT = 0;
+volatile uint8_t SEGS[5] = {0,0,0xFF,0,0};
+volatile uint8_t mode = 0x00;
 
 void split_count ()
 {
@@ -43,28 +43,32 @@ void split_count ()
 ISR(TIMER0_OVF_vect)
 {
 	uint8_t i;
-	uint8_t mode = 0x00;
 	uint8_t data, dir[2], tempmode;	
 	uint8_t ports_data[2];
+	static uint8_t switches;
 
 	ports_data[0] = PORTA;		//save PORTA data
 	ports_data[1] = PORTB & 0x70;	//save PORTA data
-	PORTA= 0xFF;			//set all pull up resistors on PORTA
-	DDRA = 0x00;			//set PORTA to all inputs
+	PORTA = 0xFF;			//set all pull up resistors on PORTA
+	DDRA  = 0x00;			//set PORTA to all inputs
 	PORTB |= 0x70;
 	PORTB &= (5 << 4) & 0x70;	//set select bits to take input from pushbuttons
 	asm("nop");
 
+	switches = 0x00;
 	for (i = 0; i < 8; i++) {	//take input with debouncing
 		if (debounce_switch(i)) {
-			mode |= 1 << i;
+			if (!((switches >> i) & 0x01)) {
+				mode ^= 1 << i;
+			}
+			switches |= 1 << i;
 		}
-		else {
-			mode &= ~(1 << i);
-		}
+		else
+			switches &= ~(1 << i);
 	}
 
 	asm("nop");
+	PORTB&= 0x8F;
 	PORTB|= ports_data[1];		//restore PORTB data
 	DDRA  = 0xFF;			//set PORTA back to outputs
 	PORTA = ports_data[0];		//restore PORTA data
@@ -116,8 +120,8 @@ int main()
 
 	SPI_init();
 
-	TIMSK |= (1<<TOIE0);				//enable interrupts
-	TCCR0 |= (1<<CS02) | (1<<CS01) | (1<<CS00);	//normal mode, prescale by 1024
+	TIMSK |= (1<<TOIE0);		//enable interrupts
+	TCCR0 |= (1<<CS02) | (1<<CS00);	//normal mode, prescale by 128
 
 	sei();
 
