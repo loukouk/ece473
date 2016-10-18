@@ -57,7 +57,6 @@ ISR(TIMER0_OVF_vect)
 	uint8_t i;
 	uint8_t data, dir[2], tempmode;	
 	uint8_t ports_data[2];
-	static uint8_t switches;
 
 	if (debounce_PORTC(6) || debounce_PORTC(7))
 		encoder_mode ^= 1;
@@ -70,16 +69,10 @@ ISR(TIMER0_OVF_vect)
 	PORTB &= (5 << 4) & 0x70;	//set select bits to take input from pushbuttons
 	asm("nop");
 
-	switches = 0x00;
 	for (i = 0; i < 8; i++) {	//take input with debouncing
 		if (debounce_switch(i)) {
-			if (!((switches >> i) & 0x01)) {
-				mode ^= 1 << i;
-			}
-			switches |= 1 << i;
+			mode ^= 1 << i;
 		}
-		else
-			switches &= ~(1 << i);
 	}
 
 	asm("nop");
