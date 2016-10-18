@@ -15,6 +15,12 @@ int8_t debounce_switch(uint8_t pin) {
 	if (state[pin] == 0xF000) return 1;
 	return 0;
 }
+int8_t debounce_PORTC(uint8_t pin) {
+	static uint16_t state[8] = {0,0,0,0,0,0,0,0}; //holds present states
+	state[pin] = (state[pin] << 1) | (! bit_is_clear(PINC, pin)) | 0xE000;	//count 12 "presses"
+	if (state[pin] == 0xF000) return 1;
+	return 0;
+}
 
 uint8_t decode_digit(int8_t digit)
 {
@@ -30,6 +36,12 @@ uint8_t decode_digit(int8_t digit)
 		case 7: 	return 0b11111000;	// print 7
 		case 8: 	return 0b10000000;	// print 8
 		case 9:		return 0b10011000;	// print 9
+		case 10: 	return 0b10001000;	// print A
+		case 11: 	return 0b10000011;	// print b
+		case 12: 	return 0b11000110;	// print C
+		case 13: 	return 0b10100001;	// print d
+		case 14: 	return 0b10000110;	// print E
+		case 15:	return 0b10001110;	// print F
 		default:	return 0b10111111;	// print dash when there is an unexpected value
 	}
 }
@@ -42,10 +54,10 @@ void SPI_init()
 
 uint8_t spi_send_read(uint8_t data)
 {
-	PORTD &= 0xFB;                  	//port D bit 2, assert active low
 	PORTE |= 0x40;				//port E bit 6, assert active high
 	SPDR = data;                    	//send data byte
 	while (bit_is_clear(SPSR,SPIF)) {}	//wait till data is sent out
+	PORTD &= 0xFB;                  	//port D bit 2, assert active low
 	PORTD |= 0x04;				//port D bit 2, deassert to logic high
 	PORTE &= 0xBF;				//port E bit 6, deassert to logic low
 

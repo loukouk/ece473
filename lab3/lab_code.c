@@ -7,6 +7,7 @@
 volatile int16_t COUNT = 0;
 volatile uint8_t SEGS[5] = {0,0,0xFF,0,0};
 volatile uint8_t mode = 0x00;
+volatile uint8_t encoder_mode;
 
 void split_count ()
 {
@@ -14,13 +15,24 @@ void split_count ()
 	uint8_t segs[5];		// local SEGS variable
 
 	//breaks up COUNT value into its separate digits
-	segs[4] = count/1000;
-	count -= segs[4] * 1000;
-	segs[3] = count/100;
-	count -= segs[3] * 100;
-	segs[1] = count/10;
-	count -= segs[1] * 10;
-	segs[0] = count;
+	if (encoder_mode == 0) {
+		segs[4] = count/1000;
+		count -= segs[4] * 1000;
+		segs[3] = count/100;
+		count -= segs[3] * 100;
+		segs[1] = count/10;
+		count -= segs[1] * 10;
+		segs[0] = count;
+	}
+	else {
+		segs[4] = count/(4096);
+		count -= segs[4] * (4096);
+		segs[3] = count/(256);
+		count -= segs[3] * 256;
+		segs[1] = count/16;
+		count -= segs[1] * 16;
+		segs[0] = count;
+	}
 
 	//removes all leading zeroes for a cleaner output
 	if (segs[4] == 0) {
@@ -46,6 +58,9 @@ ISR(TIMER0_OVF_vect)
 	uint8_t data, dir[2], tempmode;	
 	uint8_t ports_data[2];
 	static uint8_t switches;
+
+	if (debounce_PORTC(6) || debounce_PORTC(7))
+		encoder_mode ^= 1;
 
 	ports_data[0] = PORTA;		//save PORTA data
 	ports_data[1] = PORTB & 0x70;	//save PORTA data
@@ -114,6 +129,9 @@ int main()
 
 	DDRB = 0xF7;  	//set port B to all outputs (except PB3 - MISO)
 	PORTB= 0x78;	//set select bits off, PWM low, pull up resistor on MISO
+
+	DDRC = 0x3F;	//set pin 6 and 7 to inputs
+	PORTC= 0xFF;	//with pull up resistors
 
 	DDRD = 0xFF;	//set PORTD to all outputs
 	DDRE = 0xFF;	//set PORTE to all outputs
