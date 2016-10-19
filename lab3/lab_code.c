@@ -61,7 +61,7 @@ ISR(TIMER0_OVF_vect)
 	uint8_t i;
 	uint8_t dir[2], tempmode;	
 	uint8_t ports_data[2];
-	static int8_t data, encoder_count = 0;
+	static int8_t data, encoder_count[2] = {0,0};
 
 	if (debounce_PORTC(6) || debounce_PORTC(7)) {
 		encoder_mode ^= 1;
@@ -96,32 +96,31 @@ ISR(TIMER0_OVF_vect)
 
 		//increment count if encoders are being turned clockwise
 		if (dir[i] == CW) {
-			if (tempmode == 0x00)
-				encoder_count += 1;
-			else if (tempmode == 0x01)
-				encoder_count += 2;
-			else if (tempmode == 0x02)
-				encoder_count += 4;
+			encoder_count[i]++;
 		}
 		//decrement count if encoders are being turned counter clockwise
 		if (dir[i] == CCW) {
+			encoder_count[i]--;
+		}
+		if (encoder_count[i] >= 4) {
 			if (tempmode == 0x00)
-				encoder_count -= 1;
+				COUNT += 1;
 			else if (tempmode == 0x01)
-				encoder_count -= 2;
+				COUNT += 2;
 			else if (tempmode == 0x02)
-				encoder_count -= 4;
+				COUNT += 4;
+			encoder_count[i] -= 4;
+		}
+		if (encoder_count[i] <= (-1 * 4)) {
+			if (tempmode == 0x00)
+				COUNT -= 1;
+			else if (tempmode == 0x01)
+				COUNT -= 2;
+			else if (tempmode == 0x02)
+				COUNT -= 4;
+			encoder_count[i] += 4;
 		}
 	}
-	while (encoder_count >= 4) {
-		encoder_count -= 4;
-		COUNT++;
-	}
-	while (encoder_count <= -4) {
-		encoder_count += 4;
-		COUNT--;
-	}
-
 
 	if (COUNT > 1023)		//check for overflow
 		COUNT -= 1023;

@@ -17,7 +17,7 @@ int8_t debounce_switch(uint8_t pin) {
 }
 int8_t debounce_PORTC(uint8_t pin) {
 	static uint16_t state[8] = {0,0,0,0,0,0,0,0}; //holds present states
-	state[pin] = (state[pin] << 1) | (! bit_is_clear(PINC, pin)) | 0xE000;	//count 12 "presses"
+	state[pin] = (state[pin] << 1) | (! bit_is_clear(PIND, pin)) | 0xE000;	//count 12 "presses"
 	if (state[pin] == 0xF000) return 1;
 	return 0;
 }

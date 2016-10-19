@@ -64,13 +64,22 @@ uint8_t spi_send_read(uint8_t data)
 	return SPDR;				//return the data read from the encoders
 }
 
-uint8_t find_direction (uint8_t encoder_state, uint8_t i)
+uint8_t find_direction (uint8_t state, uint8_t i)
 {
-	static uint8_t prev_a[2] = {-1,-1};		//holds last state of b
-	static uint8_t prev_b[2] = {-1,-1};		//holds last state of b
-	uint8_t a = encoder_state & 1;			//current a
-	uint8_t b = (encoder_state>>1) & 1;		//current b
-	uint8_t direction = 0;				//holds resulting direction
+/*
+	static uint8_t sw_table[] = {0,1,2,0,2,0,0,1,1,0,0,2,0,2,1,0};
+	static uint8_t prev_state[2] = {0,0};
+	uint8_t index = 0;
+
+	index = (prev_state[i] << 2) | state;
+	prev_state[i] = state;
+	return sw_table[index];
+*/
+	static uint8_t prev_a[2] = {-1,-1};	//holds last state of b
+	static uint8_t prev_b[2] = {-1,-1};	//holds last state of b
+	uint8_t a = state & 1;			//current a
+	uint8_t b = (state>>1) & 1;		//current b
+	uint8_t direction = 0;			//holds resulting direction
 	
 	//Determine direction using A tracking method
 	if (!(a == -1 || b == -1)) {
@@ -93,4 +102,5 @@ uint8_t find_direction (uint8_t encoder_state, uint8_t i)
 	prev_b[i] = b;
 	
 	return direction;
+
 }
