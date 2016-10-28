@@ -23,8 +23,6 @@ void split_count ()
 		segs[1] = count/10;
 		count -= segs[1] * 10;
 		segs[0] = count;
-
-		segs[2] |= (1<<PA2);
 	}
 	else {
 		segs[4] = count/(4096);
@@ -34,8 +32,6 @@ void split_count ()
 		segs[1] = count/16;
 		count -= segs[1] * 16;
 		segs[0] = count;
-
-		segs[2] &= ~(1<<PA2);
 	}
 
 	//removes all leading zeroes for a cleaner output
@@ -54,6 +50,11 @@ void split_count ()
 	SEGS[3] = decode_digit(segs[3]);
 	SEGS[1] = decode_digit(segs[1]);
 	SEGS[0] = decode_digit(segs[0]);
+
+	if (encoder_mode)
+		SEGS[2] &= ~(1<<PA2);
+	else
+		SEGS[2] |= (1<<PA2);
 }
 
 ISR(TIMER0_OVF_vect)
@@ -61,11 +62,7 @@ ISR(TIMER0_OVF_vect)
 	uint8_t i;
 	uint8_t dir[2], tempmode;	
 	uint8_t ports_data[2];
-	static int8_t data, encoder_count[2] = {0,0};
-
-	if (debounce_PORTC(6) || debounce_PORTC(7)) {
-		encoder_mode ^= 1;
-	}
+	static int8_t data;//, encoder_count[2] = {0,0};
 
 	ports_data[0] = PORTA;		//save PORTA data
 	ports_data[1] = PORTB & 0x70;	//save PORTA data
@@ -90,35 +87,32 @@ ISR(TIMER0_OVF_vect)
 	tempmode = mode & 0x03;		//only use first 2 pushbuttons for now
 	data = spi_send_read(tempmode);	//display their mode on bar graph + get input from encoders
 
+	for (i = 0; i < 2; i++) {
+		if (debounce_spi_buttons(i, (data >> 4) & 0x03))
+			encoder_mode ^= 1;
+	}
+
 	//for each encoder, determine which direction it is being turned
 	for (i = 0; i < 2; i++) {
-		dir[i] = find_direction(data >> (i*2), i);
+		dir[i] = find_direction((data >> (i*2)) & 0x03, i);
 
 		//increment count if encoders are being turned clockwise
 		if (dir[i] == CW) {
-			encoder_count[i]++;
-		}
-		//decrement count if encoders are being turned counter clockwise
-		if (dir[i] == CCW) {
-			encoder_count[i]--;
-		}
-		if (encoder_count[i] >= 4) {
 			if (tempmode == 0x00)
 				COUNT += 1;
 			else if (tempmode == 0x01)
 				COUNT += 2;
 			else if (tempmode == 0x02)
 				COUNT += 4;
-			encoder_count[i] -= 4;
 		}
-		if (encoder_count[i] <= (-1 * 4)) {
+		//decrement count if encoders are being turned counter clockwise
+		if (dir[i] == CCW) {
 			if (tempmode == 0x00)
 				COUNT -= 1;
 			else if (tempmode == 0x01)
 				COUNT -= 2;
 			else if (tempmode == 0x02)
 				COUNT -= 4;
-			encoder_count[i] += 4;
 		}
 	}
 
@@ -140,8 +134,6 @@ int main()
 
 	DDRC = 0x3F;	//set pin 6 and 7 to inputs
 	PORTC= 0xFF;	//with pull up resistors
-
-	DDRD = 0xfF;	//set PORTD to all outputs
 
 	DDRE = 0xFF;	//set PORTE to all outputs
 
