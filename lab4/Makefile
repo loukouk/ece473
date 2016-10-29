@@ -1,7 +1,7 @@
 PRG            =lab_code
 
-OBJS            = $(PRG).o  hd44780.o
-#OBJS            = $(PRG).o  lcd1.o
+#OBJS            = $(PRG).o  hd44780.o
+OBJS            = $(PRG).o  LCDDriver.o
 
 MCU_TARGET     = atmega128
 

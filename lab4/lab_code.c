@@ -3,7 +3,8 @@
 #include <util/delay.h>
 
 #include "_functions.c"
-#include "hd44780.h"
+//#include "hd44780.h"
+#include "LCDDriver.h"
 
 #define IS_ALARM_TRIGGER (alarm_mode&0x01)
 #define ALARM_TRIGGER (alarm_mode|=0x01)
@@ -24,14 +25,14 @@
 volatile int8_t time[3] 	= {0,0,0};
 volatile int8_t alarm[3] 	= {5,0,0};
 volatile uint8_t SEGS[5] 	= {0,0,0xFF,0,0};
-volatile uint8_t mode 		= 0x00;
+volatile uint8_t mode 		= 0x02;
 volatile uint8_t encoder_mode	= 0x00;
 volatile uint8_t alarm_mode	= 0x00;
 volatile uint8_t lcd_mode	= 0x00;
 
 void split_digits(uint8_t hours, uint8_t minutes)
 {
-	uint8_t divider;
+	uint8_t divider[2], i;
 
 	if (IS_AM_PM && hours > 12) {
 		hours -= 12;
@@ -40,21 +41,23 @@ void split_digits(uint8_t hours, uint8_t minutes)
 	else
 		SEGS[2] |= 0x04;
 
-	if (encoder_mode) {
-		divider = 16;
-		SEGS[0] &= ~(1<<PA7);
-	}
-	else {
-		divider = 10;
-		SEGS[0] |= 1 << PA7;
+	for (i = 0; i < 2; i++) {
+		if ((encoder_mode >> i) & 0x01) {
+			divider[i] = 16;
+			SEGS[0] &= ~(1<<PA7);
+		}
+		else {
+			divider[i] = 10;
+			SEGS[0] |= 1 << PA7;
+		}
 	}
 
 	//breaks up time value into its separate digits
-	SEGS[4] = hours / divider;
-	SEGS[3] = hours % divider;
+	SEGS[4] = hours / divider[0];
+	SEGS[3] = hours % divider[0];
 
-	SEGS[1] = minutes / divider;
-	SEGS[0] = minutes % divider;
+	SEGS[1] = minutes / divider[1];
+	SEGS[0] = minutes % divider[1];
 
 	//removes all leading zeroes for a cleaner output
 	if (SEGS[4] == 0)
@@ -65,6 +68,15 @@ void split_digits(uint8_t hours, uint8_t minutes)
 	SEGS[3] = decode_digit(SEGS[3]);
 	SEGS[1] = decode_digit(SEGS[1]);
 	SEGS[0] = decode_digit(SEGS[0]);
+
+	for (i = 0; i < 2; i++) {
+		if ((encoder_mode >> i) & 0x01) {
+			SEGS[i*3] &= ~(1<<PA7);
+		}
+		else {
+			SEGS[i*3] |= 1 << PA7;
+		}
+	}
 
 	//makes colon blink on for 1sec, off for 1sec
 	if ((time[0] % 2) == 0)
@@ -95,10 +107,11 @@ ISR(TIMER0_OVF_vect)
 			ALARM_TRIGGER;
 
 			if (lcd_mode != LCD_ALARM_TRIG) {
-				lcd_init();
-				string2lcd("RISE AND SHINE!!");
+				
+//				LCD_Clr(); LCD_PutStr("RISE AND SHINE!!");
+//				clear_display();
+//				string2lcd("RISE AND SHINE!!");
 				lcd_mode = LCD_ALARM_TRIG;
-				SPI_init();
 			}
 		}
 	}
@@ -109,8 +122,9 @@ ISR(TIMER2_OVF_vect) {
 	static uint8_t data;
 	static int8_t encoder_count[2] = {0,0};
 
-	if (debounce_PORTC(6) || debounce_PORTC(7)) {
-		encoder_mode ^= 1;
+	for (i = 0; i < 2; i++) {
+		if (debounce_spi_buttons((data >> 4) & 0x03, i))
+			encoder_mode ^= 1 << i;
 	}
 
 	ports_data[0] = PORTA;		//save PORTA data
@@ -125,8 +139,10 @@ ISR(TIMER2_OVF_vect) {
 		if (debounce_switch(i))
 			mode ^= 1 << i;
 	}
+		if (debounce_switch(1))
+			mode ^= 1 << 1;
 	for ( ; i < 8; i++) {
-		if (debounce_switch(i))
+		if (bit_is_clear(PINA, i))
 			mode |= 1 << i;
 		else
 			mode &= ~(1<<i);
@@ -151,9 +167,10 @@ ISR(TIMER2_OVF_vect) {
 			ALARM_TRIGGER_CLEAR;
 			if (lcd_mode != LCD_ALARM_ON) {
 				lcd_mode = LCD_ALARM_ON;
-				lcd_init();
-				string2lcd("----ALARM ON----");
-				SPI_init();
+
+//				LCD_Clr(); LCD_PutStr("----ALARM ON----");
+//				clear_display();
+//				string2lcd("----ALARM ON----");
 			}
 		}
 	}
@@ -161,9 +178,9 @@ ISR(TIMER2_OVF_vect) {
 		ALARM_TRIGGER_CLEAR;
 		if (lcd_mode != LCD_ALARM_OFF) {
 			lcd_mode = LCD_ALARM_OFF;
-			lcd_init();
-			string2lcd("----ALARM OFF---");
-			SPI_init();
+//			LCD_Clr(); LCD_PutStr("----ALARM OFF---");
+//			clear_display();
+//			string2lcd("----ALARM OFF---");
 		}
 	}
 
@@ -172,29 +189,25 @@ ISR(TIMER2_OVF_vect) {
 	if (IS_SETTING) {
 		//for each encoder, determine which direction it is being turned
 		for (i = 0; i < 2; i++) {
-			dir[i] = find_direction(data >> (i*2), i);
+			dir[i] = find_direction((data >> (i*2)) & 0x03, i);
 
 			//increment count if encoders are being turned clockwise
 			if (dir[i] == CW) {
-				encoder_count[i]++;
+				if (IS_SHOW_ALARM)
+					alarm[2-i]++;
+				else
+					time[2-i]++;
 			}
 			//decrement count if encoders are being turned counter clockwise
 			else if (dir[i] == CCW) {
-				encoder_count[i]--;
+				if (IS_SHOW_ALARM)
+					alarm[2-i]--;
+				else 
+					time[2-i]--;
 			}
 		}
 
 		if (IS_SHOW_ALARM) {
-			for (i = 0; i < 2; i++) {
-				if (encoder_count[i] >= 4) {
-					alarm[2-i]++;
-					encoder_count[i] -= 4;
-				}
-				else if (encoder_count[i] <= -4) {
-					alarm[2-i]--;
-					encoder_count[i] += 4;
-				}
-			}
 			if (alarm[1] >= 60)
 				alarm[1] -= 60;
 			else if (alarm[1] < 0)
@@ -205,16 +218,6 @@ ISR(TIMER2_OVF_vect) {
 				alarm[2] += 24;
 		}
 		else {
-			for (i = 0; i < 2; i++) {
-				if (encoder_count[i] >= 4) {
-					time[2-i]++;
-					encoder_count[i] -= 4;
-				}
-				else if (encoder_count[i] <= -4) {
-					time[2-i]--;
-					encoder_count[i] += 4;
-				}
-			}
 			if (time[1] >= 60)
 				time[1] -= 60;
 			else if (time[1] < 0)
@@ -234,9 +237,6 @@ int main()
 	uint8_t i;
 	uint8_t display_count = 0;
 
-//	lcd_init();
-//	clear_display();
-
 	DDRA = 0xFF;	//set PORTA to all outputs
 	PORTA= 0xff;	//set all LEDs off at init
 
@@ -251,6 +251,9 @@ int main()
 
 	DDRE = 0xFF;	//set PORTE to all outputs
 
+//	LCD_Init();
+//	LCD_Clr();
+
 	SPI_init();
 
 	//TIMER 0 SETUP
@@ -262,7 +265,9 @@ int main()
 	TIMSK |= (1<<TOIE2);			//enable overflow interrupt
 	TCCR2 |= (1<<CS21) | (1<<CS20);		//normal mode, prescale by 256
 
+//	lcd_init();
 	sei();
+
 
 	while(1){     //do forever
 
