@@ -3,7 +3,11 @@
 #include <util/delay.h>
 
 #include "LCDDriver.h"
+#include "music.h"
 #include "_functions.h"
+
+#define LED_DELAY 1
+#define BRIGHTNESS 64
 
 ISR(TIMER0_OVF_vect)
 {
@@ -58,8 +62,26 @@ ISR(TIMER0_OVF_vect)
 }
 
 ISR(TIMER2_OVF_vect) {
+	static uint8_t int_count = 0;
+
+	if (++int_count < 128)
+		return;
+	int_count = 0;
+
 	uint8_t i, dir[2];
 	uint8_t data;
+	static uint8_t counter  = 0;
+	static uint8_t ms   = 0;
+
+	if( !(counter%256) ){
+		ms++;
+		if(ms % 8 == 0) {
+			//for note duration (64th notes) 
+			beat++;
+		}
+	}
+
+	OCR2 = BRIGHTNESS;
 
 	read_pushbuttons();
 
@@ -161,11 +183,11 @@ int main()
 	DDRB = 0xF7;  	//set port B to all outputs (except PB3 - MISO)
 	PORTB= 0x78;	//set select bits off, PWM low, pull up resistor on MISO
 
-	DDRC = 0x3F;	//set pin 6 and 7 to inputs
+	DDRC = 0xFF;	//set PORTC to all outputs
 	PORTC= 0xFF;	//with pull up resistors
 
-	DDRD = 0x3F;	//set PORTD to all outputs
-	PORTD= 0xC0;
+	DDRD = 0xFF;	//set PORTD to all outputs
+	PORTD= 0xFF;
 
 	DDRE = 0xFF;	//set PORTE to all outputs
 
@@ -180,11 +202,20 @@ int main()
 	TCCR0 |= (1<<CS02) | (1<<CS00);		//normal mode, prescale by 128
 
 	//TIMER 2 SETUP
-	TIMSK |= (1<<TOIE2);			//enable overflow interrupt
-	TCCR2 |= (0<<CS22) | (1<<CS21) | (1<<CS20);		//normal mode, prescale by 256
+	TIMSK |= (1<<TOIE2);					//enable overflow interrupt
+	TCCR2 |= (1<WGM21) | (1<<WGM20) | (0<<CS22) | (0<<CS21) | (1<<CS20) | (1<<COM21) | (1<<COM20);	//Fast pwm, prescale by 64, inverting OC2
+
+	//TIMER 3 SETUP
+	TCCR3A = (1<<COM3C1) | (0<<COM3C0) | (1<<WGM31) | (0<<WGM30);
+	TCCR3B = (1<<WGM33) | (1<<WGM32) | (1<<CS30);
+	ICR3   = 0x0fff;
+	OCR3C  = 0x0fff/2;
+
+	music_init();
 
 	sei();
 
+	music_on();
 
 	while(1){     //do forever
 
@@ -200,7 +231,7 @@ int main()
 		for (i = 0; i < 5; i++) {	//Loop through each 7seg digit
 			PORTA = SEGS[i];
 			PORTB &= (i << PB4) & 0x70;
-			_delay_ms(1);
+			_delay_ms(LED_DELAY);
 			PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
 		}
 	} //while 
