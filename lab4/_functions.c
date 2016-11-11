@@ -8,7 +8,7 @@ void init_globals()
 	time[1] 	= 0x00;
 	time[2] 	= 0x00;
 
-	alarm[0] 	= 0x00;
+	alarm[0] 	= 0x05;
 	alarm[1] 	= 0x00;
 	alarm[2] 	= 0x00;
 
@@ -26,6 +26,9 @@ void init_globals()
 	encoder_mode	= 0x00;
 	alarm_mode	= 0x00;
 	lcd_mode	= 0x00;
+
+	volume_index	= VOLUME_INDEX_MAX/2;
+	brightness_index= BRIGHTNESS_INDEX_MAX;
 }
 
 //*******************************************************************************
@@ -242,4 +245,64 @@ void decode_time(uint8_t hours, uint8_t minutes)
 		SEGS[2] &= ~(0x03);
 	else
 		SEGS[2] |= 0x03;
+}
+
+void adjust_alarm_time(uint8_t encoder_data)
+{
+	uint8_t i, dir[2];
+
+	//for each encoder, determine which direction it is being turned
+	for (i = 0; i < 2; i++) {
+		dir[i] = find_direction((encoder_data >> (i*2)) & 0x03, i);
+
+		//increment count if encoders are being turned clockwise
+		if (dir[i] == CW) {
+			if (IS_SHOW_ALARM)
+				alarm[2-i]++;
+			else
+				time[2-i]++;
+		}
+		//decrement count if encoders are being turned counter clockwise
+		else if (dir[i] == CCW) {
+			if (IS_SHOW_ALARM)
+				alarm[2-i]--;
+			else 
+				time[2-i]--;
+		}
+	}
+
+	if (IS_SHOW_ALARM) {
+		if (alarm[1] >= 60)
+			alarm[1] -= 60;
+		else if (alarm[1] < 0)
+			alarm[1] += 60;
+		if (alarm[2] >= 24)
+			alarm[2] -= 24;
+		else if (alarm[2] < 0)
+			alarm[2] += 24;
+	}
+	else {
+		if (time[1] >= 60)
+			time[1] -= 60;
+		else if (time[1] < 0)
+			time[1] += 60;
+		if (time[2] >= 24)
+			time[2] -= 24;
+		else if (time[2] < 0)
+			time[2] += 24;
+	}
+}
+
+void read_adc()
+{
+	uint8_t value = ADCH;
+	CLEAR_ADC_INT_FLAG;
+	BEGIN_ADC_CONVERSION;
+
+	if (value < ADC_MIN)
+		brightness_index = BRIGHTNESS_INDEX_MAX;
+	else if (value >= ADC_MAX)
+		brightness_index = 0;
+	else
+		brightness_index = BRIGHTNESS_INDEX_MAX - ((value - ADC_MIN) / ADC_DIV);
 }

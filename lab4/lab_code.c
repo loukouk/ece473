@@ -7,7 +7,7 @@
 #include "_functions.h"
 
 #define LED_DELAY 1
-#define BRIGHTNESS 64
+#define TEMPO 8 // 1/64th note = (256*128*TEMPO)/16Mhz
 
 ISR(TIMER0_OVF_vect)
 {
@@ -30,6 +30,7 @@ ISR(TIMER0_OVF_vect)
 			if (IS_ALARM_SNOOZE) {
 				CLEAR_ALARM_SNOOZE;
 			}
+			music_off();
 		}
 		alarm_counter++;
 	}
@@ -41,6 +42,7 @@ ISR(TIMER0_OVF_vect)
 		if (IS_ALARM_SNOOZE) {
 			if (snooze[0] == time[0] && snooze[1] == time[1] && snooze[2] == time[2]) {
 				SET_ALARM_TRIGGER;
+				music_on();
 
 				if (lcd_mode != LCD_ALARM_TRIG) {
 					LCD_Clr(); LCD_PutStr("RISE AND SHINE!!");
@@ -51,6 +53,7 @@ ISR(TIMER0_OVF_vect)
 		else {
 			if (alarm[0] == time[0] && alarm[1] == time[1] && alarm[2] == time[2]) {
 				SET_ALARM_TRIGGER;
+				music_on();
 
 				if (lcd_mode != LCD_ALARM_TRIG) {
 					LCD_Clr(); LCD_PutStr("RISE AND SHINE!!");
@@ -64,31 +67,19 @@ ISR(TIMER0_OVF_vect)
 ISR(TIMER2_OVF_vect) {
 	static uint8_t int_count = 0;
 
-	if (++int_count < 128)
-		return;
-	int_count = 0;
+	if (++int_count == 64) {
 
-	uint8_t i, dir[2];
-	uint8_t data;
-	static uint8_t counter  = 0;
-	static uint8_t ms   = 0;
+	static uint16_t volume[VOLUME_INDEX_MAX+1] = {0x0000,0x0050,0x0100,0x0150,0x0200,0x0250,0x0300,0x03500,0x0400,0x0450,0x0500,0x0550,0x0600,0x0650,0x0700,0x0750,0x0800,0x0850,0x0900,0x0950,0x1000};
+	static uint8_t brightness[BRIGHTNESS_INDEX_MAX+1] = {1,2,3,4,5,6,8,10,12,16,20,24,32,40,48,64,96,128,160,192,255};
 
-	if( !(counter%256) ){
-		ms++;
-		if(ms % 8 == 0) {
-			//for note duration (64th notes) 
-			beat++;
-		}
-	}
-
-	OCR2 = BRIGHTNESS;
-
+	read_adc();
 	read_pushbuttons();
 
 	if (IS_ALARM_ARM) {
 		if (IS_SNOOZING && IS_ALARM_TRIGGER) {
 			SET_ALARM_SNOOZE;
 			CLEAR_ALARM_TRIGGER;
+			music_off();
 			snooze[0] = time[0] + SNOOZE_SECS;
 			snooze[1] = time[1] + SNOOZE_MINS;
 			snooze[2] = time[2];
@@ -114,11 +105,30 @@ ISR(TIMER2_OVF_vect) {
 	}
 	else {
 		CLEAR_ALARM_TRIGGER;
+//		music_off();
 		if (lcd_mode != LCD_ALARM_OFF) {
 			lcd_mode = LCD_ALARM_OFF;
 			LCD_Clr(); LCD_PutStr("----ALARM OFF---");
 		}
 	}
+
+	OCR3C = volume[volume_index];
+	OCR2  = brightness[brightness_index];
+
+	}
+	else if (int_count == 128) {
+	int_count = 0;
+
+	uint8_t i, dir[2];
+	uint8_t data;
+	static uint16_t tempo_count  = 0;
+
+	if(tempo_count >= TEMPO){
+		//for note duration (64th notes) 
+		beat++;
+		tempo_count = 0;
+	}
+	tempo_count++;
 
 	data = spi_send_read(mode);	//display their mode on bar graph + get input from encoders
 
@@ -128,46 +138,21 @@ ISR(TIMER2_OVF_vect) {
 	}
 
 	if (IS_SETTING) {
-		//for each encoder, determine which direction it is being turned
-		for (i = 0; i < 2; i++) {
-			dir[i] = find_direction((data >> (i*2)) & 0x03, i);
+		adjust_alarm_time(data);
+	}
+	else {
+		dir[0] = find_direction((data) & 0x03, 0);
+		dir[1] = find_direction((data >> 2) & 0x03, 1);
 
-			//increment count if encoders are being turned clockwise
-			if (dir[i] == CW) {
-				if (IS_SHOW_ALARM)
-					alarm[2-i]++;
-				else
-					time[2-i]++;
-			}
-			//decrement count if encoders are being turned counter clockwise
-			else if (dir[i] == CCW) {
-				if (IS_SHOW_ALARM)
-					alarm[2-i]--;
-				else 
-					time[2-i]--;
-			}
-		}
-
-		if (IS_SHOW_ALARM) {
-			if (alarm[1] >= 60)
-				alarm[1] -= 60;
-			else if (alarm[1] < 0)
-				alarm[1] += 60;
-			if (alarm[2] >= 24)
-				alarm[2] -= 24;
-			else if (alarm[2] < 0)
-				alarm[2] += 24;
-		}
-		else {
-			if (time[1] >= 60)
-				time[1] -= 60;
-			else if (time[1] < 0)
-				time[1] += 60;
-			if (time[2] >= 24)
-				time[2] -= 24;
-			else if (time[2] < 0)
-				time[2] += 24;
-		}
+		if (dir[0] == CW && volume_index < VOLUME_INDEX_MAX)
+			volume_index++;
+		else if (dir[0] == CCW && volume_index > 0)
+			volume_index--;
+		if (dir[1] == CW && brightness_index < BRIGHTNESS_INDEX_MAX)
+			brightness_index++;
+		else if (dir[1] == CCW && brightness_index > 0)
+			brightness_index--;
+	}
 	}
 }
 
@@ -203,20 +188,24 @@ int main()
 
 	//TIMER 2 SETUP
 	TIMSK |= (1<<TOIE2);					//enable overflow interrupt
-	TCCR2 |= (1<WGM21) | (1<<WGM20) | (0<<CS22) | (0<<CS21) | (1<<CS20) | (1<<COM21) | (1<<COM20);	//Fast pwm, prescale by 64, inverting OC2
+	TCCR2 |= (1<WGM21) | (1<<WGM20) | (1<<CS20) | (1<<COM21) | (1<<COM20);	//Fast pwm, no prescale!!, inverting OC2
 
 	//TIMER 3 SETUP
 	TCCR3A = (1<<COM3C1) | (0<<COM3C0) | (1<<WGM31) | (0<<WGM30);
 	TCCR3B = (1<<WGM33) | (1<<WGM32) | (1<<CS30);
-	ICR3   = 0x0fff;
-	OCR3C  = 0x0fff/2;
+	ICR3   = 0x1000;
+	OCR3C  = 0x0900;
 
 	music_init();
 
+	//ADC SETUP
+	ADMUX = (1<<REFS0) | (1<<ADLAR) | (1<<MUX1);	//5V ref, left adjust, ADC2
+	ADCSRA= (1<<ADEN) | 0x07;				//enable adc, 128 prescale
+	CLEAR_ADC_INT_FLAG;
+	BEGIN_ADC_CONVERSION;
+
 	sei();
-
-	music_on();
-
+music_on();
 	while(1){     //do forever
 
 		if (IS_ALARM_TRIGGER)
@@ -225,7 +214,7 @@ int main()
 			if (IS_SHOW_ALARM)
 				decode_time(alarm[2], alarm[1]);		
 			else
-				decode_time(time[2], time[1]);
+				decode_time(brightness_index, time[1]);
 		}
 
 		for (i = 0; i < 5; i++) {	//Loop through each 7seg digit
