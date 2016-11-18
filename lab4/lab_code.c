@@ -67,10 +67,15 @@ ISR(TIMER0_OVF_vect)
 ISR(TIMER2_OVF_vect) {
 	static uint8_t int_count = 0;
 
-	if (++int_count == 64) {
+	if (++int_count < 128)
+		return;
+	int_count = 0;
 
-	static uint16_t volume[VOLUME_INDEX_MAX+1] = {0x0000,0x0050,0x0100,0x0150,0x0200,0x0250,0x0300,0x03500,0x0400,0x0450,0x0500,0x0550,0x0600,0x0650,0x0700,0x0750,0x0800,0x0850,0x0900,0x0950,0x1000};
+	static uint16_t volume[VOLUME_INDEX_MAX+1] = {0x0000,0x0100,0x200,0x300,0x400,0x500,0x600,0x700,0x800,0x900,0xA00,0xB00,0xC00,0xD00,0xE00,0x1000};
 	static uint8_t brightness[BRIGHTNESS_INDEX_MAX+1] = {1,2,3,4,5,6,8,10,12,16,20,24,32,40,48,64,96,128,160,192,255};
+	uint8_t i, dir[2];
+	uint8_t data;
+	static uint16_t tempo_count  = 0;
 
 	read_adc();
 	read_pushbuttons();
@@ -105,7 +110,7 @@ ISR(TIMER2_OVF_vect) {
 	}
 	else {
 		CLEAR_ALARM_TRIGGER;
-//		music_off();
+		music_off();
 		if (lcd_mode != LCD_ALARM_OFF) {
 			lcd_mode = LCD_ALARM_OFF;
 			LCD_Clr(); LCD_PutStr("----ALARM OFF---");
@@ -113,15 +118,8 @@ ISR(TIMER2_OVF_vect) {
 	}
 
 	OCR3C = volume[volume_index];
-	OCR2  = brightness[brightness_index];
-
-	}
-	else if (int_count == 128) {
-	int_count = 0;
-
-	uint8_t i, dir[2];
-	uint8_t data;
-	static uint16_t tempo_count  = 0;
+	if (!(encoder_mode & 0x02))
+		OCR2  = brightness[brightness_index];
 
 	if(tempo_count >= TEMPO){
 		//for note duration (64th notes) 
@@ -153,14 +151,13 @@ ISR(TIMER2_OVF_vect) {
 		else if (dir[1] == CCW && brightness_index > 0)
 			brightness_index--;
 	}
-	}
 }
 
 
 
 int main()
 {
-	uint8_t i;
+	uint8_t i, off_count=0;
 
 	DDRA = 0xFF;	//set PORTA to all outputs
 	PORTA= 0xff;	//set all LEDs off at init
@@ -205,7 +202,6 @@ int main()
 	BEGIN_ADC_CONVERSION;
 
 	sei();
-music_on();
 	while(1){     //do forever
 
 		if (IS_ALARM_TRIGGER)
@@ -214,7 +210,7 @@ music_on();
 			if (IS_SHOW_ALARM)
 				decode_time(alarm[2], alarm[1]);		
 			else
-				decode_time(brightness_index, time[1]);
+				decode_time(time[2], time[1]);
 		}
 
 		for (i = 0; i < 5; i++) {	//Loop through each 7seg digit

@@ -194,7 +194,7 @@ void print_get_up ()
 
 void decode_time(uint8_t hours, uint8_t minutes)
 {
-	uint8_t divider[2], i;
+	uint8_t divider;
 
 	if (IS_AM_PM && hours > 12) {
 		hours -= 12;
@@ -203,23 +203,17 @@ void decode_time(uint8_t hours, uint8_t minutes)
 	else
 		SEGS[2] |= 0x04;
 
-	for (i = 0; i < 2; i++) {
-		if (((encoder_mode >> i) & 0x01)) {
-			divider[i] = 16;
-			SEGS[0] &= ~(1<<PA7);
-		}
-		else {
-			divider[i] = 10;
-			SEGS[0] |= 1 << PA7;
-		}
-	}
+	if (encoder_mode & 0x01)
+		divider = 16;
+	else
+		divider = 10;
 
 	//breaks up time value into its separate digits
-	SEGS[1] = minutes / divider[0];
-	SEGS[0] = minutes % divider[0];
+	SEGS[1] = minutes / divider;
+	SEGS[0] = minutes % divider;
 
-	SEGS[4] = hours / divider[1];
-	SEGS[3] = hours % divider[1];
+	SEGS[4] = hours / divider;
+	SEGS[3] = hours % divider;
 
 	//removes all leading zeroes for a cleaner output
 	if (SEGS[4] == 0)
@@ -231,14 +225,11 @@ void decode_time(uint8_t hours, uint8_t minutes)
 	SEGS[1] = decode_digit(SEGS[1]);
 	SEGS[0] = decode_digit(SEGS[0]);
 
-	for (i = 0; i < 2; i++) {
-		if (((encoder_mode >> i) & 0x01)) {
-			SEGS[i*3] &= ~(1<<PA7);
-		}
-		else {
-			SEGS[i*3] |= 1 << PA7;
-		}
-	}
+	if (divider == 16)
+		SEGS[0] &= ~(1<<PA7);
+
+	if (IS_ALARM_ARM)
+		SEGS[3] &= ~(1<<PA7);
 
 	//makes colon blink on for 1sec, off for 1sec
 	if ((time[0] % 2) == 0)
