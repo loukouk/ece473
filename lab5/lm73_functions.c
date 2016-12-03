@@ -2,15 +2,14 @@
 // Roger Traylor 11.28.10
 
 #include <util/twi.h>
-#include "lm73_functions_skel.h"
+#include "lm73_functions.h"
 #include <util/delay.h>
 #include <stdlib.h>
 
-volatile uint8_t lm73_wr_buf[2];
-volatile uint8_t lm73_rd_buf[2];
-
 void lm73_init()
 {
+	uint8_t lm73_wr_buf[2];
+
 	lm73_wr_buf[0] = LM73_PTR_CONFIG;
 	lm73_wr_buf[1] = LM73_CONFIG_VALUE0; 
 	twi_start_wr(LM73_ADDRESS, lm73_wr_buf, 2);

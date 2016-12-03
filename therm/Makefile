@@ -11,7 +11,7 @@ PROGRAMMER_TARGET     = m128
 #PROGRAMMER_TARGET     = m48
 
 #agressive optimization
-OPTIMIZE       = -O2    # options are 1, 2, 3, s
+OPTIMIZE       = -O2  	#options are 1, 2, 3, s
 #optimize for small code
 #OPTIMIZE       = -Os    # options are 1, 2, 3, s
 #OPTIMIZE       = -1s    # options are 1, 2, 3, s

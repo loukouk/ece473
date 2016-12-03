@@ -16,6 +16,7 @@
 #include "lm73_functions_skel.h"
 #include "twi_master.h"
 
+uint16_t lm73_temp;  //a place to assemble the temperature from the lm73
 char lcd_string_array[16];  //holds a string to refresh the LCD
 char tempC[16];
 char tempF[16];
@@ -43,7 +44,6 @@ void spi_init(void){
 /***********************************************************************/
 int main ()
 {     
-uint16_t lm73_temp;  //a place to assemble the temperature from the lm73
 
 spi_init();   //initalize SPI 
 lcd_init();   //initalize LCD (lcd_functions.h)
@@ -59,20 +59,9 @@ twi_start_wr(LM73_ADDRESS, lm73_wr_buf, 2);
 while (twi_busy()) {}
 _delay_ms(1);
 */
-lm73_wr_buf[0] = LM73_PTR_CTRL_STATUS;
-lm73_wr_buf[1] = LM73_CONFIG_VALUE1; 
-twi_start_wr(LM73_ADDRESS, lm73_wr_buf, 2);
-//while (twi_busy()) {}
-_delay_ms(1);
-
-//set LM73 mode for reading temperature by loading pointer register
-//this is done outside of the normal interrupt mode of operation 
-lm73_wr_buf[0] = LM73_PTR_TEMP;   //load lm73_wr_buf[0] with temperature pointer address
-twi_start_wr(LM73_ADDRESS, lm73_wr_buf, 1);   //start the TWI write process (twi_start_wr())
-_delay_ms(1);
 uint16_t temp[2];
 while(1){          //main while loop
-  _delay_ms(1000);  //tenth second wait
+  _delay_ms(200);  //tenth second wait
   clear_display(); //wipe the display
   twi_start_rd(LM73_ADDRESS, lm73_rd_buf, 2); //read temperature data from LM73 (2 bytes)  (twi_start_rd())
   _delay_ms(2);    //wait for it to finish
@@ -83,16 +72,14 @@ while(1){          //main while loop
    //convert to string in array with itoa() from avr-libc                           
 
   cursor_home();
-  itoa(lm73_temp, lcd_string_array, 2);
-  string2lcd(lcd_string_array);
 
   lm73_temp_convert(tempF, lm73_temp, 1); //send the string to LCD (lcd_functions)
+  string2lcd(tempF);
 
   home_line2();
-  itoa(lm73_temp, lcd_string_array, 2);
-  string2lcd(lcd_string_array);
 
   lm73_temp_convert(tempC, lm73_temp, 0); //send the string to LCD (lcd_functions)
+  string2lcd(tempC);
 
   } 
 } //main

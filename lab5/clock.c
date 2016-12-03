@@ -5,9 +5,31 @@
 #include "LCDDriver.h"
 #include "music.h"
 #include "_functions.h"
+#include "twi_master.h"
+#include "lm73_functions.h"
+#include "uart_functions.h"
+#include "si4734.h"
 
 #define LED_DELAY 1
 #define TEMPO 8 // 1/64th note = (256*128*TEMPO)/16Mhz
+
+volatile enum radio_band current_radio_band = FM;
+volatile uint8_t STC_interrupt;  //flag bit to indicate tune or seek is done
+
+uint16_t eeprom_fm_freq;
+uint16_t eeprom_am_freq;
+uint16_t eeprom_sw_freq;
+uint8_t  eeprom_volume;
+
+volatile uint16_t current_fm_freq;
+volatile uint16_t current_am_freq;
+volatile uint16_t current_sw_freq;
+volatile uint8_t  current_volume;
+
+//Used in debug mode for UART1
+char uart1_tx_buf[40];      //holds string to send to crt
+char uart1_rx_buf[40];      //holds string that recieves data from uart
+//******************************************************************
 
 ISR(TIMER0_OVF_vect)
 {
@@ -157,7 +179,7 @@ ISR(TIMER2_OVF_vect) {
 
 int main()
 {
-	uint8_t i, off_count=0;
+	uint8_t i;
 
 	DDRA = 0xFF;	//set PORTA to all outputs
 	PORTA= 0xff;	//set all LEDs off at init
@@ -201,7 +223,40 @@ int main()
 	CLEAR_ADC_INT_FLAG;
 	BEGIN_ADC_CONVERSION;
 
+	//EXT INT SETUP
+	EICRB |= (1<<ISC70) | (1<<ISC71);
+	EIMSK |= (1<<INT7);
+
+	//RADIO SETUP
+	DDRE  |= 0x04; //Port E bit 2 is active high reset for radio 
+	PORTE |= 0x04; //radio reset is on at powerup (active high)
+
+	//hardware reset of Si4734
+	PORTE &= ~(1<<PE7); //int2 initially low to sense TWI mode
+	DDRE  |= 0x80;      //turn on Port E bit 7 to drive it low
+	PORTE |=  (1<<PE2); //hardware reset Si4734 
+	_delay_us(200);     //hold for 200us, 100us by spec         
+	PORTE &= ~(1<<PE2); //release reset 
+	_delay_us(30);      //5us required because of my slow I2C translators I suspect
+				//Si code in "low" has 30us delay...no explaination
+	DDRE  &= ~(0x80);   //now Port E bit 7 becomes input from the radio interrupt
+
 	sei();
+
+	fm_pwr_up(); //powerup the radio as appropriate
+	current_fm_freq = 9450; //arg2, arg3: 99.9Mhz, 200khz steps
+	fm_tune_freq(); //tune radio to frequency in current_fm_freq
+
+	//to tune down or up in frequency in 200khz steps
+//	current_fm_freq -= 20;
+//	current_fm_freq += 20;
+
+	//to read signal strength...
+//	while(twi_busy()){} //make sure TWI is not busy 
+//	fm_rsq_status()
+//	//save tune status 
+//	rssi =  si4734_tune_status_buf[4];
+   
 	while(1){     //do forever
 
 		if (IS_ALARM_TRIGGER)
@@ -221,3 +276,13 @@ int main()
 		}
 	} //while 
 } //main
+
+//******************************************************************************
+// External interrupt 7 is on Port E bit 7. The interrupt is triggered on the
+// rising edge of Port E bit 7.  The i/o clock must be running to detect the
+// edge (not asynchronouslly triggered)
+//******************************************************************************
+ISR(INT7_vect){
+	STC_interrupt = TRUE;
+}
+/***********************************************************************/

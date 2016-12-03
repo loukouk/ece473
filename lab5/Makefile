@@ -1,6 +1,6 @@
-PRG            =lab_code
+PRG            =clock
 
-OBJS            = $(PRG).o  LCDDriver.o music.o _functions.o
+OBJS           = $(PRG).o  LCDDriver.o music.o _functions.o lm73_functions.o twi_master.o uart_functions.o si4734.o
 
 MCU_TARGET     = atmega128
 
@@ -30,7 +30,7 @@ $(PRG).elf: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 clean: 
-	rm -rf *.o $(PRG).elf *.lst *.map *.srec *.hex *.bin 
+	rm -rf *.o *.elf *.lst *.map *.srec *.hex *.bin *.d
 
 prog: all program clean
 
