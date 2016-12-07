@@ -2,9 +2,6 @@
 // Roger Traylor 11.27.10
 //special defines and functions for the lm73 temperature sensor
 
-#ifndef LM73_FUNCTIONS_H_ECE473
-#define LM73_FUNCTINOS_H_ECE473
-
 #include "twi_master.h"  //my TWCR_START, STOP, NACK, RNACK, SEND
 //use the status codes in: usr/local/AVRMacPack/avr-3/include/util/twi.h
 
@@ -20,5 +17,4 @@
 //special functions for lm73 temperature sensor
 void lm73_temp_convert(char temp_digits[], uint16_t lm73_temp, uint8_t f_not_c);
 void lm73_init();
-
-#endif
+  

@@ -11,19 +11,22 @@
 #include <avr/io.h>
 #include <stdlib.h>
 #include <util/twi.h>
-#include <avr/eeprom.h>
+//#include <avr/eeprom.h>
 #include <util/delay.h>
-#include "uart_functions.h"
+//#include "uart_functions.h"
 
 #include "twi_master.h" //my defines for TWCR_START, STOP, RACK, RNACK, SEND
 #include "si4734.h"
 
+volatile enum radio_band current_radio_band = FM;
+
 uint8_t si4734_wr_buf[9];          //buffer for holding data to send to the si4734 
 uint8_t si4734_rd_buf[15];         //buffer for holding data recieved from the si4734
 uint8_t si4734_tune_status_buf[8]; //buffer for holding tune_status data  
-uint8_t si4734_revision_buf[16];   //buffer for holding revision  data  
+uint8_t si4734_revision_buf[16];   //buffer for holding revision  data
 
 
+/***********************************************************************/
 //********************************************************************************
 //                            get_int_status()
 //
@@ -57,8 +60,9 @@ void fm_tune_freq(){
   si4734_wr_buf[4] = 0x00;  //antenna tuning capactior
   //send fm tune command
   STC_interrupt = FALSE;
+  PORTB &= ~(1<<5);
   twi_start_wr(SI4734_ADDRESS, si4734_wr_buf, 5);
-  while( ! STC_interrupt ){}; //spin until the tune command finishes 
+  while( ! STC_interrupt ){PORTB^=1<<6;_delay_ms(500);} //spin until the tune command finishes 
 }
 //********************************************************************************
 
@@ -110,8 +114,9 @@ void fm_pwr_up(){
 
 //send fm power up command
   si4734_wr_buf[0] = FM_PWR_UP; //powerup command byte
-  si4734_wr_buf[1] = 0x50;      //GPO2O enabled, STCINT enabled, use ext. 32khz osc.
+  si4734_wr_buf[1] = 0xD0;      //GPO2O enabled, STCINT enabled, use ext. 32khz osc.
   si4734_wr_buf[2] = 0x05;      //OPMODE = 0x05; analog audio output
+  STC_interrupt = FALSE;
   twi_start_wr(SI4734_ADDRESS, si4734_wr_buf, 3);
   _delay_ms(200);               //startup delay as specified 
   //The seek/tune interrupt is enabled here. If the STCINT bit is set, a 1.5us

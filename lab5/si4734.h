@@ -35,8 +35,8 @@
 #define AM_RSQ_STATUS_IN_INTACK 0x01
 #define GET_REV         0x10 
 
-#define TRUE  0x01;
-#define FALSE 0x00;
+#define TRUE  0x01
+#define FALSE 0x00
 
 //si4734.c function prototypes
 uint8_t get_int_status();
@@ -56,20 +56,20 @@ void    get_rev();
 void    get_fm_rsq_status();
 
 enum radio_band{FM, AM, SW};
-extern volatile enum radio_band current_radio_band;
 
-extern volatile uint8_t STC_interrupt;  //flag bit to indicate tune or seek is done
-
-
-extern uint16_t eeprom_fm_freq;
-extern uint16_t eeprom_am_freq;
-extern uint16_t eeprom_sw_freq;
-extern uint8_t  eeprom_volume;
+uint16_t eeprom_fm_freq;
+uint16_t eeprom_am_freq;
+uint16_t eeprom_sw_freq;
+uint8_t  eeprom_volume;
 
 extern volatile uint16_t current_fm_freq;
 extern volatile uint16_t current_am_freq;
 extern volatile uint16_t current_sw_freq;
 extern volatile uint8_t  current_volume;
+
+volatile uint16_t current_sw_freq;
+volatile uint16_t current_am_freq;
+extern volatile uint8_t STC_interrupt;  //flag bit to indicate tune or seek is done
 
 //Used in debug mode for UART1
 extern char uart1_tx_buf[40];      //holds string to send to crt

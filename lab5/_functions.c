@@ -1,6 +1,32 @@
 #include <avr/io.h>
+#include <util/delay.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include "_functions.h"
+#include "twi_master.h"
+#include "lm73_functions.h"
+#include "uart_functions.h"
+
+uint16_t lm73_temp;
+extern uint8_t song;
+extern char lcd_str_ln1[16];
+extern char lcd_str_ln2[16];
+extern char interior_temp[8];
+
+//Static string definitions
+char alarm_ringing1[16] = "RISE AND SHINE!!";
+char alarm_ringing2[16] = "YOU SLEPT ENOUGH";
+char alarm_armed[16]    = "Alarm set: xx:xx";
+char alarm_off[16]      = "Relax, alarm off";
+char setting_time[16]   = "Setting time    ";
+char setting_freq[16]   = "Setting channel ";
+char setting_alarm[16]  = "Setting alarm   ";
+char setting_song[16]   = "Favorite song:  ";
+char song0_name[16]     = "   Beaver Fight!";
+char song1_name[16]     = "    Tetris Theme";
+char song2_name[16]     = "Super Mario Bros";
+char song3_name[16]     = " Legend of Zelda";
 
 void init_globals()
 {
@@ -296,4 +322,99 @@ void read_adc()
 		brightness_index = 0;
 	else
 		brightness_index = BRIGHTNESS_INDEX_MAX - ((value - ADC_MIN) / ADC_DIV);
+}
+
+void read_int_temp (char temp_str[])
+{
+	uint8_t buf[2];
+	memset(temp_str, ' ', 8);
+
+	twi_start_rd(LM73_ADDRESS, buf, 2);
+	_delay_ms(2);
+
+	lm73_temp = (buf[0] << 8) | buf[1];
+	lm73_temp_convert(temp_str, lm73_temp, F_NOT_C);
+}
+
+void int_to_str_2( uint8_t val, char str[])
+{
+	if (val > 99)
+		return;
+
+	itoa(val, str, 10);
+
+	if (val < 10) {
+		str[1] = str[0];
+		str[0] = '0';
+	}
+}
+
+void lcd_update()
+{
+	static uint8_t counter;
+	static uint8_t prev_mode = 0xFF;
+	char temp_str[2];
+
+	if (prev_mode != lcd_mode) {
+		counter = 0;
+		prev_mode = lcd_mode;
+	}
+
+	switch(lcd_mode) {
+		case LCD_ALARM_OFF:
+			memcpy(lcd_str_ln1, alarm_off, 16);
+			break; 
+		case LCD_ALARM_ON:
+			memcpy(lcd_str_ln1, alarm_armed, 16);
+			break; 
+		case LCD_ALARM_TRIG:
+			if (counter < 160) {
+				memcpy(lcd_str_ln1, alarm_ringing1, 16);
+				memcpy(lcd_str_ln2, alarm_ringing2, 16);
+			}
+			else {
+				memset(lcd_str_ln1, ' ', 16);
+				memset(lcd_str_ln1, ' ', 16);
+			}
+			counter++;
+			break;
+		case LCD_SET_TIME:
+			memcpy(lcd_str_ln1, setting_time, 16);
+			break;
+		case LCD_SET_ALARM:
+			memcpy(lcd_str_ln1, setting_alarm, 16);
+			int_to_str_2(alarm[2], temp_str);
+			lcd_str_ln1[11] = '3';
+			lcd_str_ln1[12] = '9';
+			int_to_str_2(alarm[1], temp_str);
+			lcd_str_ln1[14] = temp_str[0];
+			lcd_str_ln1[15] = temp_str[1];
+			break;
+		case LCD_SET_FREQ:
+			memcpy(lcd_str_ln1, setting_freq, 16);
+			break;
+		case LCD_SET_SONG:
+			memcpy(lcd_str_ln1, setting_song, 16);
+			switch(song) {
+				case 0:
+					memcpy(lcd_str_ln1, song0_name, 16);
+					break;
+				case 1:
+					memcpy(lcd_str_ln1, song1_name, 16);
+					break;
+				case 2:
+					memcpy(lcd_str_ln1, song2_name, 16);
+					break;
+				case 3:
+					memcpy(lcd_str_ln1, song3_name, 16);
+					break;
+			}
+			break;
+		case LCD_VOLUME:
+			memset(lcd_str_ln1, ' ', 16);
+			memset(lcd_str_ln1, '-', volume_index+1);
+			break;
+		default:
+			break;
+	}
 }

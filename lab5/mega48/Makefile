@@ -1,10 +1,10 @@
-PRG            =clock
+PRG            =mega48
 
-OBJS           = $(PRG).o si4734.o twi_master.o uart_functions.o LCDDriver.o lm73_functions.o music.o _functions.o
+OBJS           = $(PRG).o uart_functions_m48.o twi_master.o lm73_functions.o
 
-MCU_TARGET     = atmega128
+MCU_TARGET     = atmega48
 
-F_CPU          = 16000000UL
+F_CPU          = 8000000UL
 
 #OPTIMIZE       = -O0    # options are 1, 2, 3, s
 #OPTIMIZE       = -O1    # options are 1, 2, 3, s
@@ -29,13 +29,16 @@ all: $(PRG).elf lst text eeprom
 $(PRG).elf: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
+$(PRG48).elf: $(OBJS48)
+	$(CC) $(CFLAGS48) $(LDFLAGS) -o $@ $^ $(LIBS)
+
 clean: 
 	rm -rf *.o *.elf *.lst *.map *.srec *.hex *.bin *.d
 
 prog: all program clean
 
 program: $(PRG).hex
-	sudo avrdude -p m128 -c usbasp -e -U flash:w:$(PRG).hex 
+	sudo avrdude -p m48 -c usbasp -F -e -U flash:w:$(PRG).hex 
 
 lst:  $(PRG).lst
 

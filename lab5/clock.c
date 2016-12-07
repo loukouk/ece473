@@ -1,39 +1,26 @@
+#include <stdio.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
+#include <string.h>
 
+#include "_functions.h"
 #include "LCDDriver.h"
 #include "music.h"
-#include "_functions.h"
 #include "twi_master.h"
 #include "lm73_functions.h"
 #include "uart_functions.h"
 #include "si4734.h"
 
-#define LED_DELAY 1
+#define LED_DELAY 500
 #define TEMPO 8 // 1/64th note = (256*128*TEMPO)/16Mhz
 
-volatile enum radio_band current_radio_band = FM;
-volatile uint8_t STC_interrupt;  //flag bit to indicate tune or seek is done
-
-uint16_t eeprom_fm_freq;
-uint16_t eeprom_am_freq;
-uint16_t eeprom_sw_freq;
-uint8_t  eeprom_volume;
-
-volatile uint16_t current_fm_freq;
-volatile uint16_t current_am_freq;
-volatile uint16_t current_sw_freq;
-volatile uint8_t  current_volume;
-
-//Used in debug mode for UART1
-char uart1_tx_buf[40];      //holds string to send to crt
-char uart1_rx_buf[40];      //holds string that recieves data from uart
-//******************************************************************
+char lcd_str_ln1[16]  = "                ";
+char lcd_str_ln2[16]  = "                ";
+char interior_temp[8] = "        ";
 
 ISR(TIMER0_OVF_vect)
 {
-	static uint8_t alarm_counter = 0;
 
 	time[0]++;
 	if (time[0] >= 60) {
@@ -46,6 +33,8 @@ ISR(TIMER0_OVF_vect)
 				time[2] -= 24;
 		}
 	}
+
+	static uint8_t alarm_counter = 0;
 	if (IS_ALARM_TRIGGER) {
 		if (alarm_counter > 60) {
 			CLEAR_ALARM_TRIGGER;
@@ -65,25 +54,24 @@ ISR(TIMER0_OVF_vect)
 			if (snooze[0] == time[0] && snooze[1] == time[1] && snooze[2] == time[2]) {
 				SET_ALARM_TRIGGER;
 				music_on();
-
-				if (lcd_mode != LCD_ALARM_TRIG) {
-					LCD_Clr(); LCD_PutStr("RISE AND SHINE!!");
-					lcd_mode = LCD_ALARM_TRIG;
-				}
+				lcd_mode = LCD_ALARM_TRIG;
 			}
 		}
 		else {
 			if (alarm[0] == time[0] && alarm[1] == time[1] && alarm[2] == time[2]) {
 				SET_ALARM_TRIGGER;
 				music_on();
-
-				if (lcd_mode != LCD_ALARM_TRIG) {
-					LCD_Clr(); LCD_PutStr("RISE AND SHINE!!");
-					lcd_mode = LCD_ALARM_TRIG;
-				}
+				lcd_mode = LCD_ALARM_TRIG;
 			}
 		}
 	}
+
+	UART_COUNT = 0;
+	if (F_NOT_C)
+		uart_putc('F');
+	else
+		uart_putc('C');
+	_delay_us(50);
 }
 
 ISR(TIMER2_OVF_vect) {
@@ -99,7 +87,6 @@ ISR(TIMER2_OVF_vect) {
 	uint8_t data;
 	static uint16_t tempo_count  = 0;
 
-	read_adc();
 	read_pushbuttons();
 
 	if (IS_ALARM_ARM) {
@@ -123,25 +110,20 @@ ISR(TIMER2_OVF_vect) {
 				snooze[0] -= 24;
 			}
 		}
-		else if (!IS_ALARM_TRIGGER){
-			if (lcd_mode != LCD_ALARM_ON) {
-				lcd_mode = LCD_ALARM_ON;
-				LCD_Clr(); LCD_PutStr("----ALARM ON----");
-			}
-		}
+		else if (!IS_ALARM_TRIGGER)
+			lcd_mode = LCD_ALARM_ON;
 	}
 	else {
 		CLEAR_ALARM_TRIGGER;
 		music_off();
-		if (lcd_mode != LCD_ALARM_OFF) {
-			lcd_mode = LCD_ALARM_OFF;
-			LCD_Clr(); LCD_PutStr("----ALARM OFF---");
-		}
+		lcd_mode = LCD_ALARM_OFF;
 	}
 
 	OCR3C = volume[volume_index];
-	if (!(encoder_mode & 0x02))
+	if (encoder_mode & 0x02) {
+		read_adc();
 		OCR2  = brightness[brightness_index];
+	}
 
 	if(tempo_count >= TEMPO){
 		//for note duration (64th notes) 
@@ -150,7 +132,7 @@ ISR(TIMER2_OVF_vect) {
 	}
 	tempo_count++;
 
-	data = spi_send_read(mode);	//display their mode on bar graph + get input from encoders
+	data = spi_send_read(mode);	//display mode on bar graph + get input from encoders
 
 	for (i = 0; i < 2; i++) {
 		if (debounce_spi_buttons(i,(data >> 4) & 0x03))
@@ -173,12 +155,50 @@ ISR(TIMER2_OVF_vect) {
 		else if (dir[1] == CCW && brightness_index > 0)
 			brightness_index--;
 	}
+
+	static uint8_t char_count = 0;
+	if (char_count < 16)
+		LCD_PutChar(lcd_str_ln1[char_count]);
+	else
+		LCD_PutChar(lcd_str_ln2[char_count-16]);
+
+	if (++char_count >= 32) {
+		char_count = 0;
+		LCD_MovCursorLn1();
+		lcd_update();
+	}
+	else if (char_count == 16)
+		LCD_MovCursorLn2();
 }
 
+ISR(USART0_RX_vect)
+{
+	if (UART_COUNT >= 8)
+		return;
 
+	char data = UDR0;
+	if (data == 0x00)
+		return;
 
+	lcd_str_ln2[UART_COUNT] = data;
+	UART_COUNT++;
+	if (UART_COUNT >= 8) {
+		if (interior_temp[1] != ' ')
+			memcpy(lcd_str_ln2 + 8, interior_temp, 8);
+		UART_COUNT = 0;
+	}
+}
+/*
+ISR(INT7_vect){
+	STC_interrupt = TRUE;
+	PORTB |= 1<<5;
+	_delay_ms(5000);
+	PORTB ^= 0x80;
+}
+*/
 int main()
 {
+	uint16_t temp_cnt = 0;
 	uint8_t i;
 
 	DDRA = 0xFF;	//set PORTA to all outputs
@@ -188,7 +208,7 @@ int main()
 	PORTB= 0x78;	//set select bits off, PWM low, pull up resistor on MISO
 
 	DDRC = 0xFF;	//set PORTC to all outputs
-	PORTC= 0xFF;	//with pull up resistors
+	PORTC= 0x00;	//with pull up resistors
 
 	DDRD = 0xFF;	//set PORTD to all outputs
 	PORTD= 0xFF;
@@ -197,7 +217,7 @@ int main()
 
 	LCD_Init();
 	LCD_Clr();
-
+	uart_init();
 	init_globals();
 
 	//TIMER 0 SETUP
@@ -208,12 +228,13 @@ int main()
 	//TIMER 2 SETUP
 	TIMSK |= (1<<TOIE2);					//enable overflow interrupt
 	TCCR2 |= (1<WGM21) | (1<<WGM20) | (1<<CS20) | (1<<COM21) | (1<<COM20);	//Fast pwm, no prescale!!, inverting OC2
+	OCR2 = 255;
 
 	//TIMER 3 SETUP
 	TCCR3A = (1<<COM3C1) | (0<<COM3C0) | (1<<WGM31) | (0<<WGM30);
 	TCCR3B = (1<<WGM33) | (1<<WGM32) | (1<<CS30);
 	ICR3   = 0x1000;
-	OCR3C  = 0x0900;
+	OCR3C  = 0x0B00;
 
 	music_init();
 
@@ -226,38 +247,48 @@ int main()
 	//EXT INT SETUP
 	EICRB |= (1<<ISC70) | (1<<ISC71);
 	EIMSK |= (1<<INT7);
+/*
+	DDRB = 0xFF;
+	PORTB = 0x00;
 
 	//RADIO SETUP
-	DDRE  |= 0x04; //Port E bit 2 is active high reset for radio 
+	DDRE  |= 0xFF; //Port E bit 2 is active high reset for radio 
 	PORTE |= 0x04; //radio reset is on at powerup (active high)
+
+	PORTB |= 0x01;
 
 	//hardware reset of Si4734
 	PORTE &= ~(1<<PE7); //int2 initially low to sense TWI mode
 	DDRE  |= 0x80;      //turn on Port E bit 7 to drive it low
-	PORTE |=  (1<<PE2); //hardware reset Si4734 
-	_delay_us(200);     //hold for 200us, 100us by spec         
-	PORTE &= ~(1<<PE2); //release reset 
-	_delay_us(30);      //5us required because of my slow I2C translators I suspect
-				//Si code in "low" has 30us delay...no explaination
+	PORTE &=  ~(1<<PE2); //hardware reset Si4734 
+	_delay_ms(1000);     //hold for 200us, 100us by spec         
+	PORTE |= (1<<PE2); //release reset 
+	_delay_us(50);      //5us required because of my slow I2C translators I suspect
+	//Si code in "low" has 30us delay...no explaination
 	DDRE  &= ~(0x80);   //now Port E bit 7 becomes input from the radio interrupt
-
+	PORTE |= 0x80;
+*/
+	init_twi();
+//	PORTB |= 0x02;
 	sei();
+	lm73_init();
 
+/*	fm_pwr_up(); //powerup the radio as appropriate
+	_delay_ms(2000);
 	fm_pwr_up(); //powerup the radio as appropriate
-	current_fm_freq = 9450; //arg2, arg3: 99.9Mhz, 200khz steps
+	PORTB |= 0x04;
+	current_fm_freq = 10790; //arg2, arg3: 99.9Mhz, 200khz steps
+	_delay_ms(1000);
 	fm_tune_freq(); //tune radio to frequency in current_fm_freq
-
-	//to tune down or up in frequency in 200khz steps
-//	current_fm_freq -= 20;
-//	current_fm_freq += 20;
-
-	//to read signal strength...
-//	while(twi_busy()){} //make sure TWI is not busy 
-//	fm_rsq_status()
-//	//save tune status 
-//	rssi =  si4734_tune_status_buf[4];
-   
+	PORTB |= 0x08;
+*/
 	while(1){     //do forever
+		if (temp_cnt > 2000) {
+			read_int_temp(interior_temp);
+			temp_cnt = 0;
+		}
+		else
+			temp_cnt++;
 
 		if (IS_ALARM_TRIGGER)
 			print_get_up();
@@ -271,18 +302,9 @@ int main()
 		for (i = 0; i < 5; i++) {	//Loop through each 7seg digit
 			PORTA = SEGS[i];
 			PORTB &= (i << PB4) & 0x70;
-			_delay_ms(LED_DELAY);
+			_delay_us(LED_DELAY);
 			PORTB |= (1<<PB6) | (1<<PB5) | (1<<PB4);
 		}
+
 	} //while 
 } //main
-
-//******************************************************************************
-// External interrupt 7 is on Port E bit 7. The interrupt is triggered on the
-// rising edge of Port E bit 7.  The i/o clock must be running to detect the
-// edge (not asynchronouslly triggered)
-//******************************************************************************
-ISR(INT7_vect){
-	STC_interrupt = TRUE;
-}
-/***********************************************************************/
