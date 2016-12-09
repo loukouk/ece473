@@ -9,10 +9,9 @@
 #include "uart_functions.h"
 #include "si4734.h"
 #include "LCDDriver.h"
-#include "music.h"
 
 uint16_t lm73_temp;
-extern volatile uint8_t song;
+extern uint8_t song;
 extern volatile uint8_t mode;
 extern volatile uint8_t buttons;
 extern volatile uint8_t SEGS[5];
@@ -30,7 +29,6 @@ extern char lcd_str_ln1[16];
 extern char lcd_str_ln2[16];
 extern char interior_temp[8];
 extern char full_temp_str[16];
-extern uint8_t UART_COUNT;
 
 //Static string definitions
 char alarm_ringing1[16] = "RISE AND SHINE!!";
@@ -108,15 +106,6 @@ uint8_t spi_send_read(uint8_t data)
 	return SPDR;				//return the data read from the encoders
 }
 
-void request_temp() {
-	UART_COUNT = 0;
-	if (F_NOT_C)
-		uart_putc('F');
-	else
-		uart_putc('C');
-	_delay_us(50);
-}
-
 uint8_t find_direction (uint8_t state, uint8_t i)
 {
 /*
@@ -164,16 +153,11 @@ FIND_DIRECTION_EXIT:
 
 void mode_set()
 {
-	if (IS_ALARM_TRIGGER && buttons) {
-		CLEAR_ALARM_TRIGGER;
-		if (!IS_RADIO_MODE)
-			music_off();
+	if (IS_ALARM_TRIGGER && (buttons&(~(1<<3))))
+		mode |= 1<<7;
+	else
+		mode &= ~(1<<7);
 
-		if (buttons & (~(1<<3)))
-			mode |= 1<<7;
-		else
-			mode &= ~(1<<7);
-	}
 	if ((buttons >> 1) & 0x01 && !IS_RADIO_MODE) {
 		mode &= ~(1<<2);
 		mode ^= 1<<1;
@@ -199,13 +183,9 @@ void mode_set()
 		mode ^= 1<<6;
 	}
 	if ((buttons >> 7) & 0x01) {
-		music_off();
-
 		song++;
 		if (song > 4)
 			song = 0;
-
-		music_on();
 
 		lcd_freeze_mode = LCD_SET_SONG;
 		LCD_FREEZE_COUNTER = LCD_FREEZE_TIME;
@@ -554,42 +534,38 @@ void lcd_update()
 	}
 }
 
-void init_radio()
-{
-	//EXT INT SETUP
-	EICRB |= (1<<ISC70) | (0<<ISC71);
-	EIMSK |= (1<<INT7);
-}
-
 void reset_radio()
 {
+/*
 	DDRE  |= 0x04; //Port E bit 2 is active high reset for radio 
 	PORTE |= 0x04; //radio reset is on at powerup (active high)
-
-	PORTB |= 0x01;
 
 	//hardware reset of Si4734
 	PORTE &= ~(1<<PE7); //int2 initially low to sense TWI mode
 	DDRE  |= 0x80;      //turn on Port E bit 7 to drive it low
-	PORTE |=  1<<PE2; //hardware reset Si4734 
+	PORTE |=  (1<<PE2); //hardware reset Si4734 
 	_delay_us(200);     //hold for 200us, 100us by spec         
 	PORTE &= ~(1<<PE2); //release reset 
 	_delay_us(30);      //5us required because of my slow I2C translators I suspect
-			//Si code in "low" has 30us delay...no explaination
+				//Si code in "low" has 30us delay...no explaination
 	DDRE  &= ~(0x80);   //now Port E bit 7 becomes input from the radio interrupt
+*/
 }
 
 void play_radio()
 {
+/*
 	reset_radio();
-	fm_pwr_up(); //powerup the radio as appropriate
-	_delay_ms(1000);
-	fm_tune_freq(); //tune radio to frequency in current_fm_freq
-	fm_tune_freq(); //tune radio to frequency in current_fm_freq
-	fm_tune_freq(); //tune radio to frequency in current_fm_freq	
+	_delay_us(100);
+	fm_pwr_up();
+	_delay_ms(100);
+	fm_tune_freq();
+	_delay_ms(100);
+	fm_tune_freq();
+*/
 }
 
 void stop_radio()
 {
-	radio_pwr_dwn();
+//	radio_pwr_dwn();
 }

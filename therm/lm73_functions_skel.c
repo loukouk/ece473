@@ -5,12 +5,12 @@
 #include "lm73_functions_skel.h"
 #include <util/delay.h>
 #include <stdlib.h>
-
-volatile uint8_t lm73_wr_buf[2];
-volatile uint8_t lm73_rd_buf[2];
+#include <string.h>
 
 void lm73_init()
 {
+	uint8_t lm73_wr_buf[2];
+
 	lm73_wr_buf[0] = LM73_PTR_CONFIG;
 	lm73_wr_buf[1] = LM73_CONFIG_VALUE0; 
 	twi_start_wr(LM73_ADDRESS, lm73_wr_buf, 2);
@@ -25,35 +25,58 @@ void lm73_init()
 
 void lm73_temp_convert(char temp_digits[], uint16_t lm73_temp, uint8_t f_not_c){
 
-	int32_t dec_val_times_10 = 0;
-	char dec_str_times_10[3];
+	int32_t dec_val_times_100 = 0;
+	char temp_char, char_sign, dec_str_times_100[4] = {'\0','\0','\0','\0'};
 
-	if (0x8000 & lm73_temp) {
-		temp_digits[0] = '-';
-		dec_val_times_10 = 0xFFFFFFFF;
-		dec_val_times_10 &= lm73_temp >> 2;
+	if (lm73_temp & 0x8000) {
+		lm73_temp ^= 0xFFFF;
+		lm73_temp += 1;
+		char_sign = '-';
 	}
-	else {
-		temp_digits[0] = '+';	
-		dec_val_times_10 |= lm73_temp >> 2;
-	}
+	else
+		char_sign = '+';
 
+	dec_val_times_100 = lm73_temp;
 
 	if (f_not_c) {
-		temp_digits[5] = 'F';
-		dec_val_times_10 = ((18 * dec_val_times_10) >> 5) + 320;
+		if (char_sign == '-') {
+			dec_val_times_100 *= -1;
+		}
+		dec_val_times_100 = ((180 * dec_val_times_100) >> 7) + 3200;
+		temp_char = 'F';
+		if (dec_val_times_100 >= 0)
+			char_sign = '+';
+		else
+			dec_val_times_100 *= -1;
 	}
 	else {
-		dec_val_times_10 = (10 * dec_val_times_10) >> 5;
-		temp_digits[5] = 'C';
+		dec_val_times_100 = ((100 * dec_val_times_100) >> 7);
+		temp_char = 'C';
 	}
 
+	itoa(dec_val_times_100, dec_str_times_100, 10);
 
-	itoa(dec_val_times_10, dec_str_times_10, 10);
-
-	temp_digits[1] = dec_str_times_10[0];
-	temp_digits[2] = dec_str_times_10[1];
-	temp_digits[3] = '.';
-	temp_digits[4] = dec_str_times_10[2];
+	temp_digits[0] = char_sign;
+	if (dec_val_times_100 < 1000) {
+		temp_digits[1] = dec_str_times_100[0];
+		temp_digits[2] = '.';
+		temp_digits[3] = dec_str_times_100[1];	
+		temp_digits[4] = temp_char;
+	}
+	else if (dec_val_times_100 < 10000) {
+		temp_digits[1] = dec_str_times_100[0];
+		temp_digits[2] = dec_str_times_100[1];
+		temp_digits[3] = '.';
+		temp_digits[4] = dec_str_times_100[2];
+		temp_digits[5] = temp_char;
+	}
+	else {
+		temp_digits[1] = dec_str_times_100[0];
+		temp_digits[2] = dec_str_times_100[1];
+		temp_digits[3] = dec_str_times_100[2];
+		temp_digits[4] = '.';
+		temp_digits[5] = dec_str_times_100[3];
+		temp_digits[6] = temp_char;
+	}
 
 }//lm73_temp_convert

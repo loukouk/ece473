@@ -1,16 +1,11 @@
+#ifndef MUSIC_H_ECE473
+#define MUSIC_H_ECE473
+
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include <string.h>
 
-//Mute is on PORTD
-//set the hex values to set and unset the mute pin
-//I used PORTD-PIN2
-#define mute 0x04
-#define unmute 0xFB
-//Alarm is also on PORTD
-//set the hex value for the alarm pin
-//I used PORTD-PIN7
 #define ALARM_PIN 0x80
 #define NUM_SONGS 4
 
@@ -141,3 +136,5 @@ void play_note(char note, uint8_t flat, uint8_t octave, uint8_t duration);
 void music_off(void);
 void music_on(void);      
 void music_init(void);
+
+#endif

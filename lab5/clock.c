@@ -15,13 +15,35 @@
 #define LED_DELAY 500
 #define TEMPO 8 // 1/64th note = (256*128*TEMPO)/16Mhz
 
+volatile  int8_t time[3]		= {0x00,0x00,0x00};
+volatile  int8_t alarm[3]		= {0x05,0x00,0x00};;
+volatile  int8_t snooze[3]		= {0x00,0x00,0x00};;
+volatile uint8_t SEGS[5]		= {0xFF,0xFF,0xFF,0xFF,0xFF};;
+volatile uint8_t mode			= 0x00;
+volatile uint8_t buttons		= 0x00;
+volatile uint8_t encoder_mode		= 0x00;
+volatile uint8_t alarm_mode		= 0x00;
+volatile uint8_t volume_index		= VOLUME_INDEX_MAX/3;
+volatile uint8_t brightness_index	= BRIGHTNESS_INDEX_MAX;
+uint8_t ocr2_lock = 0;
+
+volatile uint16_t current_fm_freq = 10790;
+volatile uint8_t  current_volume;
+
+volatile uint8_t  STC_interrupt 	= 0x00;
+volatile uint8_t  UART_COUNT 		= 0xFF;
+volatile uint16_t LCD_FREEZE_COUNTER 	= 0x00;
+volatile uint8_t  lcd_freeze_mode 	= 0x00;
+volatile uint8_t lcd_mode 		= 0x00;
+
 char lcd_str_ln1[16]  = "                ";
 char lcd_str_ln2[16]  = "                ";
-char interior_temp[8] = "        ";
+char full_temp_str[16] = " hi          hi ";
+char interior_temp[8] = "   ho   ";
+char exterior_temp[8] = "   he   ";
 
 ISR(TIMER0_OVF_vect)
 {
-
 	time[0]++;
 	if (time[0] >= 60) {
 		time[0] -= 60;
@@ -54,24 +76,16 @@ ISR(TIMER0_OVF_vect)
 			if (snooze[0] == time[0] && snooze[1] == time[1] && snooze[2] == time[2]) {
 				SET_ALARM_TRIGGER;
 				music_on();
-				lcd_mode = LCD_ALARM_TRIG;
 			}
 		}
 		else {
 			if (alarm[0] == time[0] && alarm[1] == time[1] && alarm[2] == time[2]) {
 				SET_ALARM_TRIGGER;
 				music_on();
-				lcd_mode = LCD_ALARM_TRIG;
 			}
 		}
 	}
-
-	UART_COUNT = 0;
-	if (F_NOT_C)
-		uart_putc('F');
-	else
-		uart_putc('C');
-	_delay_us(50);
+	request_temp();
 }
 
 ISR(TIMER2_OVF_vect) {
@@ -88,6 +102,14 @@ ISR(TIMER2_OVF_vect) {
 	static uint16_t tempo_count  = 0;
 
 	read_pushbuttons();
+	mode_set();
+	
+	if (IS_RADIO_MODE) {
+		music_on();
+	}
+	else if (!IS_RADIO_MODE) {
+		music_off();
+	}
 
 	if (IS_ALARM_ARM) {
 		if (IS_SNOOZING && IS_ALARM_TRIGGER) {
@@ -110,17 +132,11 @@ ISR(TIMER2_OVF_vect) {
 				snooze[0] -= 24;
 			}
 		}
-		else if (!IS_ALARM_TRIGGER)
-			lcd_mode = LCD_ALARM_ON;
 	}
-	else {
-		CLEAR_ALARM_TRIGGER;
-		music_off();
-		lcd_mode = LCD_ALARM_OFF;
-	}
+	lcd_mode_set();
 
 	OCR3C = volume[volume_index];
-	if (encoder_mode & 0x02) {
+	if (encoder_mode & 0x02 && !ocr2_lock) {
 		read_adc();
 		OCR2  = brightness[brightness_index];
 	}
@@ -140,16 +156,40 @@ ISR(TIMER2_OVF_vect) {
 	}
 
 	if (IS_SETTING) {
-		adjust_alarm_time(data);
+		if (IS_SHOW_FREQ) {
+			dir[0] = find_direction((data) & 0x03, 0);
+			dir[1] = find_direction((data >> 2) & 0x03, 1);
+
+			if ((dir[0] == CW || dir[1] == CW)) {
+				if (current_fm_freq >= 10810)
+					current_fm_freq = 8810;
+				else
+					current_fm_freq += 20;
+			}
+			if ((dir[1] == CCW || dir[0] == CCW)) {
+				if (current_fm_freq <= 8810)
+					current_fm_freq = 10810;
+				else
+					current_fm_freq -= 20;
+			}
+		}
+		else
+			adjust_alarm_time(data);
 	}
 	else {
 		dir[0] = find_direction((data) & 0x03, 0);
 		dir[1] = find_direction((data >> 2) & 0x03, 1);
 
-		if (dir[0] == CW && volume_index < VOLUME_INDEX_MAX)
+		if (dir[0] == CW && volume_index < VOLUME_INDEX_MAX) {
 			volume_index++;
-		else if (dir[0] == CCW && volume_index > 0)
+			lcd_freeze_mode = LCD_VOLUME;
+			LCD_FREEZE_COUNTER = LCD_FREEZE_TIME;
+		}
+		else if (dir[0] == CCW && volume_index > 0) {
 			volume_index--;
+			lcd_freeze_mode = LCD_VOLUME;
+			LCD_FREEZE_COUNTER = LCD_FREEZE_TIME;
+		}
 		if (dir[1] == CW && brightness_index < BRIGHTNESS_INDEX_MAX)
 			brightness_index++;
 		else if (dir[1] == CCW && brightness_index > 0)
@@ -169,10 +209,13 @@ ISR(TIMER2_OVF_vect) {
 	}
 	else if (char_count == 16)
 		LCD_MovCursorLn2();
+
 }
 
 ISR(USART0_RX_vect)
 {
+	DDRF = 0x01;
+	PORTF^=0x01;
 	if (UART_COUNT >= 8)
 		return;
 
@@ -180,22 +223,23 @@ ISR(USART0_RX_vect)
 	if (data == 0x00)
 		return;
 
-	lcd_str_ln2[UART_COUNT] = data;
+	exterior_temp[UART_COUNT] = data;
 	UART_COUNT++;
 	if (UART_COUNT >= 8) {
+		memcpy(full_temp_str, exterior_temp, 8);
 		if (interior_temp[1] != ' ')
-			memcpy(lcd_str_ln2 + 8, interior_temp, 8);
+			memcpy(full_temp_str + 8, interior_temp, 8);
 		UART_COUNT = 0;
 	}
 }
-/*
+
 ISR(INT7_vect){
 	STC_interrupt = TRUE;
 	PORTB |= 1<<5;
 	_delay_ms(5000);
 	PORTB ^= 0x80;
 }
-*/
+
 int main()
 {
 	uint16_t temp_cnt = 0;
@@ -218,7 +262,6 @@ int main()
 	LCD_Init();
 	LCD_Clr();
 	uart_init();
-	init_globals();
 
 	//TIMER 0 SETUP
 	ASSR  |= (1<<AS0);			//external clock 32,768Hz
@@ -234,7 +277,7 @@ int main()
 	TCCR3A = (1<<COM3C1) | (0<<COM3C0) | (1<<WGM31) | (0<<WGM30);
 	TCCR3B = (1<<WGM33) | (1<<WGM32) | (1<<CS30);
 	ICR3   = 0x1000;
-	OCR3C  = 0x0B00;
+	OCR3C  = 0x0900;
 
 	music_init();
 
@@ -245,10 +288,10 @@ int main()
 	BEGIN_ADC_CONVERSION;
 
 	//EXT INT SETUP
-	EICRB |= (1<<ISC70) | (1<<ISC71);
-	EIMSK |= (1<<INT7);
-/*
-	DDRB = 0xFF;
+//	EICRB |= (1<<ISC70) | (1<<ISC71);
+//	EIMSK |= (1<<INT7);
+
+/*	DDRB = 0xFF;
 	PORTB = 0x00;
 
 	//RADIO SETUP
@@ -272,9 +315,8 @@ int main()
 //	PORTB |= 0x02;
 	sei();
 	lm73_init();
-
-/*	fm_pwr_up(); //powerup the radio as appropriate
-	_delay_ms(2000);
+//	request_temp();
+/*
 	fm_pwr_up(); //powerup the radio as appropriate
 	PORTB |= 0x04;
 	current_fm_freq = 10790; //arg2, arg3: 99.9Mhz, 200khz steps
@@ -283,6 +325,7 @@ int main()
 	PORTB |= 0x08;
 */
 	while(1){     //do forever
+
 		if (temp_cnt > 2000) {
 			read_int_temp(interior_temp);
 			temp_cnt = 0;
@@ -294,7 +337,9 @@ int main()
 			print_get_up();
 		else {
 			if (IS_SHOW_ALARM)
-				decode_time(alarm[2], alarm[1]);		
+				decode_time(alarm[2], alarm[1]);
+			else if (IS_SHOW_FREQ)
+				decode_freq(current_fm_freq);
 			else
 				decode_time(time[2], time[1]);
 		}

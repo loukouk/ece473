@@ -7,6 +7,9 @@
 #define IS_ALARM_SNOOZE (alarm_mode&0x02)
 #define SET_ALARM_SNOOZE (alarm_mode|=0x02)
 #define CLEAR_ALARM_SNOOZE (alarm_mode&=0xFD)
+#define IS_PLAYING_MUSIC (alarm_mode&0x04)
+#define SET_PLAYING_MUSIC (alarm_mode|=0x04)
+#define CLEAR_PLAYING_MUSIC (alarm_mode&=0xFB)
 
 // pusbutton definitions
 //	0: setting mode
@@ -66,5 +69,5 @@ void lcd_mode_set();
 void play_radio();
 void stop_radio();
 void reset_radio();
-void request_temp();
+
 #endif

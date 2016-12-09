@@ -1,4 +1,5 @@
 #include "music.h"
+#include "_functions.h"
 
 #define DEFAULT_SONG 0
 #define SONG0
@@ -7,7 +8,6 @@
 #define SONG3
 
 volatile uint8_t REST;
-volatile uint8_t IS_ON = 0;
 
 #ifdef SONG0
 void song0(uint16_t note) { //beaver fight song (Max and Kellen)
@@ -1152,18 +1152,16 @@ void play_note(char note, uint8_t flat, uint8_t octave, uint8_t duration) {
 }
 
 void music_off(void) {
-	if (!IS_ON)
-		return;
-	IS_ON = 0;
 	//this turns the alarm timer off
 	notes=0;
 	TCCR1B &= ~((1<<CS11)|(1<<CS10));
+//	stop_radio();
 }
 
 void music_on(void) {
-	if (IS_ON)
-		return;
-	IS_ON = 1;
+//	if (song == 4)
+//		play_radio();
+
 	//this starts the alarm timer running
 	notes=0;
 	TCCR1B |= (1<<CS11)|(1<<CS10);
