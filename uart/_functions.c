@@ -25,7 +25,7 @@ extern volatile uint16_t LCD_FREEZE_COUNTER;
 extern volatile uint8_t  lcd_freeze_mode;
 extern volatile uint8_t brightness_index;
 extern volatile uint8_t volume_index;
-extern volatile uint16_t channel_preset[3];
+extern uint8_t ocr2_lock;
 extern char lcd_str_ln1[16];
 extern char lcd_str_ln2[16];
 extern char interior_temp[8];
@@ -52,10 +52,6 @@ char song3_name[16]     = " Legend of Zelda";
 char radio_str[16]	= "   Radio of Doom";
 char volume_str[16]     = "    Volume xx   ";
 char playing_radio[16]	= "Playing music!  ";
-char selected_12hr[16]  = "12hr format set!";
-char selected_24hr[16]  = "24hr format set!";
-char selected_C[16]     = "----Celcius-----";
-char selected_F[16]     = "---Fahrenheit---";
 
 //*******************************************************************************
 //                            debounce_switch                                  
@@ -170,7 +166,7 @@ FIND_DIRECTION_EXIT:
 
 void mode_set()
 {
-	if (IS_ALARM_TRIGGER & buttons) {
+	if (IS_ALARM_TRIGGER && buttons) {
 		CLEAR_ALARM_TRIGGER;
 		if (!IS_RADIO_MODE)
 			music_off();
@@ -180,57 +176,25 @@ void mode_set()
 		else
 			mode &= ~(1<<7);
 	}
-
-	if ((buttons >> 1) & 0x01) {
-		if (!IS_RADIO_MODE) {
-			mode &= ~(1<<2);
-			mode ^= 1<<1;
-		}
-		else
-			current_fm_freq = channel_preset[1];
+	if ((buttons >> 1) & 0x01 && !IS_RADIO_MODE) {
+		mode &= ~(1<<2);
+		mode ^= 1<<1;
 	}
-	else if ((buttons >> 2) & 0x01) {
-		if (!IS_RADIO_MODE) {
-			mode &= ~(1<<1);
-			mode ^= 1<<2;
-		}
-		else
-			current_fm_freq = channel_preset[2];
+	else if ((buttons >> 2) & 0x01 && !IS_RADIO_MODE) {
+		mode &= ~(1<<1);
+		mode ^= 1<<2;
 	}
-	if ((buttons >> 0) & 0x01) {
-		if (!IS_RADIO_MODE)
-			mode ^= 0x01;
-		else
-			current_fm_freq = channel_preset[0];
+	if ((buttons >> 0) & 0x01 && !IS_RADIO_MODE) {
+		mode ^= 0x01;
 	}
 	if ((buttons >> 3) & 0x01) {
 		mode ^= 1<<3;
-		if (IS_ALARM_ARM) {
-			lcd_freeze_mode = LCD_ALARM_ON;
-			LCD_FREEZE_COUNTER = LCD_FREEZE_TIME;
-		}
 	}
 	if ((buttons >> 4) & 0x01) {
 		mode ^= 1<<4;
-		if (IS_AM_PM) {
-			lcd_freeze_mode = LCD_12HR_FORMAT;
-			LCD_FREEZE_COUNTER = LCD_FREEZE_TIME;
-		}
-		else {
-			lcd_freeze_mode = LCD_24HR_FORMAT;
-			LCD_FREEZE_COUNTER = LCD_FREEZE_TIME;
-		}
 	}
 	if ((buttons >> 5) & 0x01) {
 		mode ^= 1<<5;
-		if (F_NOT_C) {
-			lcd_freeze_mode = LCD_F;
-			LCD_FREEZE_COUNTER = LCD_FREEZE_TIME;
-		}
-		else {
-			lcd_freeze_mode = LCD_C;
-			LCD_FREEZE_COUNTER = LCD_FREEZE_TIME;
-		}
 	}
 	if ((buttons >> 6) & 0x01) {
 		mode &= ~((1<<0) | (1<<1) | (1<<2));
@@ -304,25 +268,24 @@ void read_pushbuttons ()
 
 void print_get_up ()
 {
-	static uint16_t display_count;
+	static uint8_t display_count;
 
-	if (display_count < 400) {
+	if (display_count < 80) {
+		ocr2_lock = 0;
 		SEGS[0] = 0b10000111;	//t
 		SEGS[1] = 0b10000110;	//E
 		SEGS[2] = 0b11111111;	//off
 		SEGS[3] = 0b10010000;	//g
 		SEGS[4] = 0xFF;		//off
 	}
-	else if (display_count < 550 || display_count >= 950) {
-		SEGS[0] = 0xFF; 	//t
-		SEGS[1] = 0xFF; 	//E
-		SEGS[2] = 0xFF; 	//off
-		SEGS[3] = 0xFF; 	//g
-		SEGS[4] = 0xFF;		//off
-		if (display_count > 1100)
-			display_count = 0;
+	else if (display_count < 128 || display_count >= 208) {
+		OCR2 = 0x00;
+		ocr2_lock = 1;
+		lcd_freeze_mode = LCD_CLEAR;
+		LCD_FREEZE_COUNTER = 1;
 	}
 	else {
+		ocr2_lock = 0;
 		SEGS[0] = 0b11111111;	//off
 		SEGS[1] = 0b10001100;	//P
 		SEGS[2] = 0b11111111;	//off
@@ -373,9 +336,9 @@ void decode_freq(uint16_t freq)
 	segs[3] = freq/1000;
 	freq -= segs[3]*1000;
 	segs[2] = freq / 100;
-	freq -= segs[2]*100;
+	freq -= segs[3]*100;
 	segs[1] = freq / 10;
-	freq -= segs[1]*10;
+	freq -= segs[3]*10;
 	segs[0] = freq;
 
 
@@ -509,15 +472,13 @@ void lcd_update()
 			memcpy(lcd_str_ln2, full_temp_str, 16);
 			break; 
 		case LCD_ALARM_TRIG:
-			if (counter < 5) {
+			if (counter < 160) {
 				memcpy(lcd_str_ln1, alarm_ringing1, 16);
 				memcpy(lcd_str_ln2, alarm_ringing2, 16);
 			}
 			else {
 				memset(lcd_str_ln1, ' ', 16);
 				memset(lcd_str_ln2, ' ', 16);
-				if (counter > 7)
-					counter = 0;
 			}
 			counter++;
 			break;
@@ -571,8 +532,7 @@ void lcd_update()
 			break;
 		case LCD_PLAYING_RADIO:
 			memcpy(lcd_str_ln1, playing_radio, 16);
-			memcpy(lcd_str_ln2, full_temp_str, 16);
-/*			switch(song) {
+			switch(song) {
 				case 0:
 					memcpy(lcd_str_ln2, song0_name, 16);
 					break;
@@ -589,23 +549,8 @@ void lcd_update()
 					memcpy(lcd_str_ln2, radio_str, 16);
 					break;
 			}
-*/			break;
-		case LCD_12HR_FORMAT:
-			memcpy(lcd_str_ln1, selected_12hr, 16);
-			memcpy(lcd_str_ln2, full_temp_str, 16);
 			break;
-		case LCD_24HR_FORMAT:
-			memcpy(lcd_str_ln1, selected_24hr, 16);
-			memcpy(lcd_str_ln2, full_temp_str, 16);
-			break;
-		case LCD_C:
-			memcpy(lcd_str_ln1, selected_C, 16);
-			memcpy(lcd_str_ln2, full_temp_str, 16);
-			break;
-		case LCD_F:
-			memcpy(lcd_str_ln1, selected_F, 16);
-			memcpy(lcd_str_ln2, full_temp_str, 16);
-			break;
+			
 		default:
 			break;
 	}

@@ -60,8 +60,9 @@ void fm_tune_freq(){
   si4734_wr_buf[4] = 0x00;  //antenna tuning capactior
   //send fm tune command
   STC_interrupt = FALSE;
+  PORTB &= ~(1<<5);
   twi_start_wr(SI4734_ADDRESS, si4734_wr_buf, 5);
-  while( ! STC_interrupt ){} //spin until the tune command finishes 
+  while( ! STC_interrupt ){PORTB^=1<<6;_delay_ms(500);} //spin until the tune command finishes 
 }
 //********************************************************************************
 

@@ -1,22 +1,14 @@
-SHELL           = /bin/bash
+PRG            =clock
 
-PRG             = uart_rxtx
-
-OBJS            = uart_rxtx.o uart_functions.o hd44780.o
-
-SRCS            = uart_rxtx.c uart_functions.c  hd44780.c
+OBJS           = $(PRG).o uart_functions.o LCDDriver.o 
 
 MCU_TARGET     = atmega128
-#MCU_TARGET     = atmega48
 
 F_CPU          = 16000000UL
 
-PROGRAMMER_TARGET     = m128
-#PROGRAMMER_TARGET     = m48
-
-#agressive optimization
-OPTIMIZE       = -O2    # options are 1, 2, 3, s
-#optimize for small code
+#OPTIMIZE       = -O0    # options are 1, 2, 3, s
+#OPTIMIZE       = -O1    # options are 1, 2, 3, s
+OPTIMIZE        = -O2    # options are 1, 2, 3, s
 #OPTIMIZE       = -Os    # options are 1, 2, 3, s
 
 DEFS           =
@@ -37,36 +29,13 @@ all: $(PRG).elf lst text eeprom
 $(PRG).elf: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-#prevent confusion with any file named "clean"
-#the dash "-" prevents rm from erroring out with file not found
-.PHONY	: clean
 clean: 
-	-rm -rf $(PRG).o $(PRG).elf $(PRG).lst $(PRG).map $(PRG).srec $(PRG)*.bin
-	-rm -rf $(PRG)_eeprom.srec $(PRG)_eeprom*.bin $(PRG)_eeprom.hex $(PRG).hex 
-	-rm -rf $(PRG).d
+	rm -rf *.o *.elf *.lst *.map *.srec *.hex *.bin *.d
 
-#clean entire directory
-all_clean:
-	rm -rf *.o *.elf *.lst *.map *.srec *.bin *.hex *.d
+prog: all program clean
 
-#Here is the pattern rule to generate a file of dependencies (i.e., a makefile) 
-#called `name.d' from a C source file +called `name.c':
-%.d: %.c
-	@set -e; rm -f $@; \
-	$(CC) -MM $(CFLAGS) $< > $@.$$$$; \
-	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-	rm -f $@.$$$$
-
-#include the dependencies from the other makefiles
-include $(SRCS:.c=.d)
-
-#setup for usb programmer
 program: $(PRG).hex
-#	chmod 644 $(PRG).hex only needed for redhat
-#	avrdude -p $(PROGRAMMER_TARGET) -c usbasp -e -U flash:w:$(PRG).hex 
-	sudo avrdude -p $(PROGRAMMER_TARGET) -c usbasp -e -U flash:w:$(PRG).hex \
-                                                     -U eeprom:w:$(PRG)_eeprom.hex
-#	avrdude -p $(PROGRAMMER_TARGET) -c osuisp2 -e -U flash:w:$(PRG).hex 
+	sudo avrdude -p m128 -c usbasp -e -U flash:w:$(PRG).hex 
 
 lst:  $(PRG).lst
 
@@ -99,13 +68,11 @@ ebin:  $(PRG)_eeprom.bin
 esrec: $(PRG)_eeprom.srec
 
 %_eeprom.hex: %.elf
-	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O ihex $< $@ \
-	|| { echo empty $@ not generated; exit 0; }
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O ihex $< $@
 
 %_eeprom.srec: %.elf
-	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O srec $< $@ \
-	|| { echo empty $@ not generated; exit 0; }
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O srec $< $@
 
 %_eeprom.bin: %.elf
-	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O binary $< $@ \
-	|| { echo empty $@ not generated; exit 0; }
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O binary $< $@
+

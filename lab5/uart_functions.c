@@ -26,7 +26,6 @@ char uart_rx_buf[40];      //holds string that recieves data from uart
 void uart_putc(char data) {
     while (!(UCSR0A&(1<<UDRE0)));    // Wait for previous transmissions
     UDR0 = data;    // Send data byte
-    while (!(UCSR0A&(1<<UDRE0)));    // Wait for previous transmissions
 }
 //******************************************************************
 
